@@ -3,5 +3,6 @@ Abych vyresil tento exploit https://www.unknowncheats.me/forum/c-and-c-/390593-v
 - https://git.back.engineering/_xeroxz/bluepill/src/branch/master/idt_handlers.asm
 - https://git.back.engineering/_xeroxz/bluepill/src/branch/master/idt.cpp#L96
 - https://git.back.engineering/_xeroxz/bluepill/src/branch/master/exit_handler.cpp#L27
+- https://git.back.engineering/_xeroxz/bluepill/src/branch/master/exception.cpp#L34
 
 https://git.back.engineering/_xeroxz/bluepill/#idt-interrupt-descriptor-table
