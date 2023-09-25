@@ -1,2 +1,2 @@
-# iwa
-Indestructible Wild Angel
+# Indestructible Wild Angel
+![iwa](iwa.png)
