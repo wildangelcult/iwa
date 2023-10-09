@@ -129,9 +129,6 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
 
 	printf("%p %p\n", scMan, service);
 
-	CloseServiceHandle(service);
-	CloseServiceHandle(scMan);
-
 	if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\iwa", 0, KEY_ALL_ACCESS, &key)) {
 		//docs doesnt talk about GetLastError, but at this point there is no way RegOpenKeyEx fails
 		fail();
@@ -149,5 +146,16 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
 	RegCloseKey(key);
 
 	MessageBox(NULL, "Installation successful.", "IWA installer", MB_OK);
+
+	if (MessageBox(NULL, "Start the service?", "IWA installer", MB_YESNO) == IDYES) {
+		if (!StartService(service, 0, NULL)) {
+			fail();
+			return 1;
+		}
+	}
+
+	CloseServiceHandle(service);
+	CloseServiceHandle(scMan);
+
 	return 0;
 }
