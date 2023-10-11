@@ -5,7 +5,6 @@
 #include "resource.h"
 
 //https://learn.microsoft.com/en-us/windows/win32/controls/use-a-single-line--edit-control
-//https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsystemdirectorya
 
 DWORD addr = 0;
 const char clientPath[] = "\\iwa.exe";
@@ -112,9 +111,28 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
 
 	if (!(service = CreateService(scMan,
 				      "iwa",
-				      "Indestructible Wild Angel",
+				      "Indestructible Wild Angel - driver",
 				      SERVICE_ALL_ACCESS,
 				      SERVICE_KERNEL_DRIVER,
+				      SERVICE_DEMAND_START,
+				      SERVICE_ERROR_NORMAL,
+				      buf,
+				      NULL,
+				      NULL,
+				      NULL,
+				      NULL,
+				      NULL))) {
+		fail();
+		return 1;
+	}
+	CloseServiceHandle(service);
+	
+	memcpy(buf + systemSize, clientPath, sizeof(clientPath));
+	if (!(service = CreateService(scMan,
+				      "iwaclient",
+				      "Indestructible Wild Angel - client",
+				      SERVICE_ALL_ACCESS,
+				      SERVICE_WIN32_OWN_PROCESS,
 				      SERVICE_AUTO_START,
 				      SERVICE_ERROR_NORMAL,
 				      buf,
@@ -126,10 +144,10 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
 		fail();
 		return 1;
 	}
-
+	
 	printf("%p %p\n", scMan, service);
 
-	if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\iwa", 0, KEY_ALL_ACCESS, &key)) {
+	if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\iwaclient", 0, KEY_ALL_ACCESS, &key)) {
 		//docs doesnt talk about GetLastError, but at this point there is no way RegOpenKeyEx fails
 		fail();
 		return 1;

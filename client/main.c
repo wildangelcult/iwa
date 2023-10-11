@@ -1,24 +1,91 @@
+#define _CRT_SECURE_NO_WARNINGS
+
 #include <Windows.h>
 #include <stdio.h>
 
 #include "../shared.h"
 
-int main(int argc, char *argv[]) {
-	HANDLE driver;
-	DWORD32 serverIp = 0xdeadbeef;
+SERVICE_STATUS_HANDLE svcHandle;
+SERVICE_STATUS svcStatus;
 
-	printf("%x\n", IOCTL_GET_IPADDR);
+void svc_stop(DWORD exitCode) {
+	svcStatus.dwWin32ExitCode = GetLastError();
+	svcStatus.dwServiceSpecificExitCode = exitCode;
+	svcStatus.dwCurrentState = SERVICE_STOPPED;
+	SetServiceStatus(svcHandle, &svcStatus);
+}
+
+void svc_handler(DWORD dwControl) {
+	if (dwControl == SERVICE_CONTROL_STOP) {
+		svc_stop(0);
+	}
+}
+
+void svc_init() {
+	svcHandle = RegisterServiceCtrlHandler("iwaclient", svc_handler);
+	memset(&svcStatus, 0, sizeof(SERVICE_STATUS));
+	svcStatus.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
+	svcStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP;
+
+	svcStatus.dwCurrentState = SERVICE_RUNNING;
+	SetServiceStatus(svcHandle, &svcStatus);
+}
+
+void svc_main(DWORD dwNumServicesArgs, LPSTR *lpServiceArgVectors) {
+	HKEY key;
+	FILE *fw;
+	SC_HANDLE driverSvc;
+	HANDLE driver;
+	DWORD32 serverIp = 0;
+	DWORD regSize = sizeof(DWORD32);
+
+	svc_init();
+
+	fw = fopen("iwa.log", "w");
+
+	if (RegGetValue(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\iwaclient", "ipaddr", RRF_RT_DWORD, NULL, &serverIp, &regSize)) {
+		fprintf(fw, "RegGetValue");
+		fclose(fw);
+		svc_stop(1);
+		return;
+	}
+
+	fprintf(fw, "Server IP %x\n", serverIp);
+	driverSvc = OpenService(OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS), "iwa", SERVICE_START);
+	if (!StartService(driverSvc, 0, NULL)) {
+		fprintf(fw, "StartService %u\n", GetLastError());
+		fclose(fw);
+		svc_stop(1);
+		return;
+	}
+	CloseServiceHandle(driverSvc);
+
+
 	if ((driver = CreateFile("\\\\.\\iwa", GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)) == INVALID_HANDLE_VALUE) {
-		printf("CreateFile %u\n", GetLastError());
-		return 1;
+		fprintf(fw, "CreateFile %u\n", GetLastError());
+		fclose(fw);
+		svc_stop(1);
+		return;
 	}
-	if (!DeviceIoControl(driver, IOCTL_GET_IPADDR, NULL, 0, &serverIp, sizeof(DWORD32), NULL, NULL)) {
-		printf("DeviceIoControl %u\n", GetLastError());
-		return 1;
+	if (!DeviceIoControl(driver, IOCTL_PROTECT_PID, NULL, 0, NULL, 0, NULL, NULL)) {
+		fprintf(fw, "DeviceIoControl %u\n", GetLastError());
+		fclose(fw);
+		svc_stop(1);
+		return;
 	}
-	printf("Server IP %x\n", serverIp);
 
 	CloseHandle(driver);
 
+	fclose(fw);
+
+	svc_stop(0);
+}
+
+int main(int argc, char *argv[]) {
+	SERVICE_TABLE_ENTRY dispatch[2] = {
+		{"iwaclient", svc_main},
+		{NULL, NULL}
+	};
+	StartServiceCtrlDispatcher(dispatch);
 	return 0;
 }

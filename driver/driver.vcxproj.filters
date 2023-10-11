@@ -27,5 +27,8 @@
     <ClInclude Include="..\shared.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="msr.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

@@ -1,5 +1,8 @@
 #include <wdm.h>
 #include <ntddk.h>
+#include <intrin.h>
+
+#include "msr.h"
 #include "../shared.h"
 
 BOOLEAN shouldProtect = TRUE;
@@ -20,21 +23,12 @@ NTSTATUS nrot_mjr_create(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 NTSTATUS nrot_mjr_ioctl(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 	PIO_STACK_LOCATION stack;
 	NTSTATUS status = STATUS_SUCCESS;
-	ULONG_PTR info = 0;
 
 	DbgPrint("[IWA] " __FUNCTION__ "\n");
 
 	stack = IoGetCurrentIrpStackLocation(Irp);
 
 	switch (stack->Parameters.DeviceIoControl.IoControlCode) {
-		case IOCTL_GET_IPADDR:
-			if (stack->Parameters.DeviceIoControl.OutputBufferLength != sizeof(DWORD32)) {
-				status = STATUS_INVALID_PARAMETER;
-			} else {
-				memcpy(Irp->AssociatedIrp.SystemBuffer, &ipAddr, sizeof(DWORD32));
-				info = sizeof(DWORD32);
-			}
-			break;
 		case IOCTL_PROTECT_PID:
 			break;
 		case IOCTL_SET_PROTECT_STATE:
@@ -45,7 +39,7 @@ NTSTATUS nrot_mjr_ioctl(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 	}
 
 	Irp->IoStatus.Status = status;
-	Irp->IoStatus.Information = info;
+	Irp->IoStatus.Information = 0;
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 	return status;
 }
@@ -58,6 +52,35 @@ NTSTATUS nrot_mjr_default(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 }
 
 BOOLEAN nrot_cpu_checkFeatures() {
+	unsigned int data[4];
+	unsigned int intel[3] = {0x756e6547, 0x6c65746e, 0x49656e69};
+	msr_featureControl_t featCtrl;
+	msr_vmxEptVpidCap_t eptCap;
+	msr_mtrrDefType_t mttr;
+
+	__cpuid(data, 0);
+	if (memcmp(&data[1], intel, sizeof(intel))) return FALSE;
+
+	__cpuid(data, 0);
+	if (!(data[2] & (1 << 5))) return FALSE;
+
+	featCtrl.value = __readmsr(MSR_FEATURE_CONTROL);
+
+	if (featCtrl.lock) {
+		if (!featCtrl.VMX) return FALSE;
+	} else {
+		//where is bios lol
+		featCtrl.lock = 1;
+		featCtrl.VMX = 1;
+		__writemsr(MSR_FEATURE_CONTROL, featCtrl.value);
+	}
+
+	eptCap.value = __readmsr(MSR_VMX_EPT_VPID_CAP);
+	if (!(eptCap.execOnly && eptCap.pageWalk4 && eptCap.memoryTypeWB && eptCap.twoMBPages)) return FALSE;
+
+	mttr.value = __readmsr(MSR_MTRR_DEF_TYPE);
+	if (!mttr.enabled) return FALSE;
+
 	return TRUE;
 }
 
@@ -77,7 +100,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) 
 	DbgPrint("[IWA] " __FUNCTION__ "\n");
 
 	if (!nrot_cpu_checkFeatures()) {
-		return STATUS_UNSUCCESSFUL;
+		return STATUS_INVALID_PARAMETER;
 	}
 
 	RtlInitUnicodeString(&deviceName, L"\\Device\\iwa");
