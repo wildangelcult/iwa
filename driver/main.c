@@ -4,20 +4,34 @@
 
 #include "msr.h"
 #include "../shared.h"
+#include "hv.h"
+
+#ifndef INVALID_HANDLE_VALUE
+#define INVALID_HANDLE_VALUE ((HANDLE)(-1))
+#endif
 
 BOOLEAN shouldProtect = TRUE;
 
 static DWORD32 ipAddr = 0;
+HANDLE clientPid = INVALID_HANDLE_VALUE;
 
-HANDLE PsGetCurrentProcessId();
+NTKERNELAPI HANDLE PsGetCurrentProcessId();
 
 NTSTATUS nrot_mjr_create(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
+	NTSTATUS status = STATUS_SUCCESS;
 	DbgPrint("[IWA] " __FUNCTION__ "\n");
 	DbgPrint("[IWA] %p\n", PsGetCurrentProcessId());
-	Irp->IoStatus.Status = STATUS_SUCCESS;
+
+	if (clientPid == INVALID_HANDLE_VALUE) {
+		clientPid = PsGetCurrentProcessId();
+	} else if (clientPid != PsGetCurrentProcessId()) {
+		status = STATUS_ACCESS_DENIED;
+	}
+
+	Irp->IoStatus.Status = status;
 	Irp->IoStatus.Information = 0;
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
-	return STATUS_SUCCESS;
+	return status;
 }
 
 NTSTATUS nrot_mjr_ioctl(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
@@ -95,7 +109,6 @@ void nrot_DriverUnload(PDRIVER_OBJECT DriverObject) {
 NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) {
 	PDEVICE_OBJECT deviceObj;
 	UNICODE_STRING deviceName, dosDeviceName;
-	NTSTATUS status = STATUS_SUCCESS;
 	SIZE_T i;
 	DbgPrint("[IWA] " __FUNCTION__ "\n");
 
@@ -105,7 +118,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) 
 
 	RtlInitUnicodeString(&deviceName, L"\\Device\\iwa");
 	RtlInitUnicodeString(&dosDeviceName, L"\\DosDevices\\iwa");
-	status = IoCreateDevice(DriverObject, 0, &deviceName, FILE_DEVICE_UNKNOWN, FILE_DEVICE_SECURE_OPEN, FALSE, &deviceObj);
+	IoCreateDevice(DriverObject, 0, &deviceName, FILE_DEVICE_UNKNOWN, FILE_DEVICE_SECURE_OPEN, FALSE, &deviceObj);
 	IoCreateSymbolicLink(&dosDeviceName, &deviceName);
 
 	for (i = 0; i < IRP_MJ_MAXIMUM_FUNCTION; ++i) DriverObject->MajorFunction[i] = nrot_mjr_default;
@@ -114,8 +127,11 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) 
 	DriverObject->DriverUnload = nrot_DriverUnload;
 
 
-
 	//imageBase = DriverObject->DriverStart;
 
-	return status;
+	if (!nrot_hv_init()) {
+		return STATUS_UNSUCCESSFUL;
+	}
+
+	return STATUS_SUCCESS;
 }
