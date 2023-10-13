@@ -1,6 +1,3 @@
-#include <wdm.h>
-#include <ntddk.h>
-
 #include "hv.h"
 
 BOOLEAN nrot_hv_init() {

@@ -90,7 +90,7 @@ BOOLEAN nrot_cpu_checkFeatures() {
 	}
 
 	eptCap.value = __readmsr(MSR_VMX_EPT_VPID_CAP);
-	if (!(eptCap.execOnly && eptCap.pageWalk4 && eptCap.memoryTypeWB && eptCap.twoMBPages)) return FALSE;
+	if (!(eptCap.execOnly && eptCap.pageWalk4 && eptCap.memTypeWB && eptCap.twoMBPages)) return FALSE;
 
 	mttr.value = __readmsr(MSR_MTRR_DEF_TYPE);
 	if (!mttr.enabled) return FALSE;
