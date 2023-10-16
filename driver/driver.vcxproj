@@ -153,6 +153,7 @@
     <ClCompile Include="ept.c" />
     <ClCompile Include="hv.c" />
     <ClCompile Include="main.c" />
+    <ClCompile Include="util.c" />
     <ClCompile Include="vmx.c" />
   </ItemGroup>
   <ItemGroup>
@@ -160,6 +161,7 @@
     <ClInclude Include="ept.h" />
     <ClInclude Include="hv.h" />
     <ClInclude Include="msr.h" />
+    <ClInclude Include="util.h" />
     <ClInclude Include="vmx.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

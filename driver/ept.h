@@ -87,7 +87,7 @@ typedef struct ept_ept_s {
 	ept_eptp_t eptp;
 } ept_ept_t;
 
-ept_ept_t *ept;
+extern ept_ept_t *ept;
 
 BOOLEAN nrot_ept_init();
 
