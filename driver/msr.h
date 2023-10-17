@@ -8,6 +8,8 @@
 #define MSR_MTRR_PHYSBASE0	0x200
 #define MSR_MTRR_PHYSMASK0	0x201
 
+#define MSR_VMX_BASIC		0x480
+
 typedef union msr_featureControl_u {
 	ULONG64 value;
 	struct {
@@ -96,5 +98,22 @@ typedef union msr_mtrrPhysMask_u {
 		ULONG64 _rest		: 16;
 	};
 } msr_mtrrPhysMask_t;
+
+typedef union msr_vmxBasic_u {
+	ULONG64 value;
+	struct {
+		ULONG64 revId		: 31;
+		ULONG64 _reserved1	: 1;
+		ULONG64	regionSize	: 13;
+		ULONG64 _reserved2	: 3;
+		ULONG64 physWidth	: 1;
+		ULONG64 dualMonitor	: 1;
+		ULONG64 memType		: 4;
+		ULONG64 vmexitInsOuts	: 1;
+		ULONG64 vmxCap		: 1;
+		ULONG64 hwExErrorCode	: 1;
+		ULONG64 _rest		: 7;
+	};
+} msr_vmxBasic_t;
 
 #endif //__MSR_H

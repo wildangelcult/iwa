@@ -16,5 +16,6 @@ NTKERNELAPI LOGICAL KeSignalCallDpcSynchronize(PVOID SystemArgument2);
 #include "vmx.h"
 
 BOOLEAN nrot_hv_init();
+void nrot_hv_exit();
 
 #endif //__HV_H

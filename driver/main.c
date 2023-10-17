@@ -104,6 +104,8 @@ void nrot_DriverUnload(PDRIVER_OBJECT DriverObject) {
 	RtlInitUnicodeString(&dosDeviceName, L"\\DosDevices\\iwa");
 	IoDeleteSymbolicLink(&dosDeviceName);
 	IoDeleteDevice(DriverObject->DeviceObject);
+
+	nrot_hv_exit();
 }
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) {
