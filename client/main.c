@@ -32,7 +32,6 @@ void svc_init() {
 }
 
 void svc_main(DWORD dwNumServicesArgs, LPSTR *lpServiceArgVectors) {
-	HKEY key;
 	FILE *fw;
 	SC_HANDLE driverSvc;
 	HANDLE driver;
