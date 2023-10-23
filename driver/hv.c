@@ -22,7 +22,10 @@ BOOLEAN nrot_hv_init() {
 		if (!(vmx[i].msrBitmap = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, POOL_TAG))) return FALSE;
 	}
 
-	KeGenericCallDpc(nrot_vmx_init, NULL);
+	if (!(idt = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, POOL_TAG))) return FALSE;
+	if (!nrot_idt_init()) return FALSE;
+
+	KeIpiGenericCall(nrot_vmx_init, 0);
 
 	return TRUE;
 }
@@ -30,7 +33,7 @@ BOOLEAN nrot_hv_init() {
 void nrot_hv_exit() {
 	ULONG i, cpuN;
 
-	KeGenericCallDpc(nrot_vmx_exit, NULL);
+	KeIpiGenericCall(nrot_vmx_exit, 0);
 
 	if (ept) {
 		if (ept->pageTable) MmFreeContiguousMemory(ept->pageTable);
@@ -46,4 +49,6 @@ void nrot_hv_exit() {
 		}
 		ExFreePoolWithTag(vmx, POOL_TAG);
 	}
+
+	if (idt) ExFreePoolWithTag(idt, POOL_TAG);
 }

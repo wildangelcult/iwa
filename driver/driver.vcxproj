@@ -158,17 +158,23 @@
   <ItemGroup>
     <ClCompile Include="ept.c" />
     <ClCompile Include="hv.c" />
+    <ClCompile Include="idt.c" />
     <ClCompile Include="main.c" />
     <ClCompile Include="util.c" />
     <ClCompile Include="vmx.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\shared.h" />
+    <ClInclude Include="asm.h" />
     <ClInclude Include="ept.h" />
     <ClInclude Include="hv.h" />
+    <ClInclude Include="idt.h" />
     <ClInclude Include="msr.h" />
     <ClInclude Include="util.h" />
     <ClInclude Include="vmx.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="asm.asm" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
