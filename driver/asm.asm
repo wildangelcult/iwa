@@ -107,7 +107,7 @@ root_asm_vmexit PROC
 root_asm_vmexit ENDP
 
 both_asm_getGdt PROC
-	sgdt [rcx]
+	sgdt fword ptr [rcx]
 	ret
 both_asm_getGdt ENDP
 
