@@ -1,4 +1,5 @@
 EXTERN root_idt_nmiHandler:PROC
+EXTERN root_vmx_vmexit:PROC
 
 .code
 
@@ -39,11 +40,11 @@ root_asm_idtNmiHandler PROC
 	push r13
 	push r14
 	push r15
+
 	sub rsp, 20h
-
 	call root_idt_nmiHandler
-
 	add rsp, 20h
+
 	pop r15
 	pop r14
 	pop r13
@@ -63,9 +64,91 @@ root_asm_idtNmiHandler PROC
 	iretq
 root_asm_idtNmiHandler ENDP
 
+root_asm_vmexit PROC
+	push r15
+	push r14
+	push r13
+	push r12
+	push r11
+	push r10
+	push r9
+	push r8
+	push rdi
+	push rsi
+	push rbp
+	push rbp
+	push rbx
+	push rdx
+	push rcx
+	push rax
+
+	mov rcx, rsp
+
+	sub rsp, 20h
+	call root_vmx_vmexit
+	add rsp, 20h
+
+	pop rax
+	pop rcx
+	pop rdx
+	pop rbx
+	pop rbp
+	pop rbp
+	pop rsi
+	pop rdi
+	pop r8
+	pop r9
+	pop r10
+	pop r11
+	pop r12
+	pop r13
+	pop r14
+	pop r15
+root_asm_vmexit ENDP
+
+both_asm_getGdt PROC
+	sgdt [rcx]
+	ret
+both_asm_getGdt ENDP
+
+both_asm_getEs PROC
+	mov rax, es
+	ret
+both_asm_getEs ENDP
+
 both_asm_getCs PROC
 	mov rax, cs
 	ret
 both_asm_getCs ENDP
+
+both_asm_getSs PROC
+	mov rax, ss
+	ret
+both_asm_getSs ENDP
+
+both_asm_getDs PROC
+	mov rax, ds
+	ret
+both_asm_getDs ENDP
+
+both_asm_getFs PROC
+	mov rax, fs
+	ret
+both_asm_getFs ENDP
+
+both_asm_getGs PROC
+	mov rax, gs
+	ret
+both_asm_getGs ENDP
+
+both_asm_getLdtr PROC
+	sldt rax
+	ret
+both_asm_getLdtr ENDP
+
+both_asm_getTr PROC
+	str rax
+	ret
+both_asm_getTr ENDP
 
 end

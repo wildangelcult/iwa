@@ -11,7 +11,7 @@ void root_idt_nmiHandler() {
 }
 
 BOOLEAN nrot_idt_init() {
-	asm_segDesc_t desc;
+	asm_descTable_t desc;
 	idt_entry_t nmiEntry;
 	idt_addr_t addr;
 
