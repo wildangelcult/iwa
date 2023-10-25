@@ -1,5 +1,6 @@
 EXTERN root_idt_nmiHandler:PROC
 EXTERN root_vmx_vmexit:PROC
+EXTERN eror_vmx_vmresumeError:PROC
 
 .code
 
@@ -104,6 +105,9 @@ root_asm_vmexit PROC
 	pop r13
 	pop r14
 	pop r15
+
+	vmresume
+	jmp eror_vmx_vmresumeError
 root_asm_vmexit ENDP
 
 both_asm_getGdt PROC
@@ -150,5 +154,11 @@ both_asm_getTr PROC
 	str rax
 	ret
 both_asm_getTr ENDP
+
+both_asm_getRflags PROC
+	pushfq
+	pop rax
+	ret
+both_asm_getRflags ENDP
 
 end

@@ -21,4 +21,5 @@ UINT16 both_asm_getFs();
 UINT16 both_asm_getGs();
 UINT16 both_asm_getLdtr();
 UINT16 both_asm_getTr();
+ULONG64 both_asm_getRflags();
 #endif //__ASM_H

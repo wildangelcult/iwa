@@ -3,6 +3,15 @@
 
 vmx_vmx_t *vmx;
 
+typedef struct vmx_kprocess_s {
+	DISPATCHER_HEADER header;
+	LIST_ENTRY profileListHead;
+	ULONG_PTR directoryTableBase;
+	UINT8 data[1];
+} vmx_kprocess_t;
+
+extern NTKERNELAPI vmx_kprocess_t* PsInitialSystemProcess;
+
 typedef union vmx_segDesc_u {
 	ULONG64 value;
 	struct {
@@ -98,7 +107,8 @@ ULONG_PTR nrot_vmx_init(ULONG_PTR ctx) {
 	vmx_vmx_t *currVmx;
 	msr_vmxBasic_t vmxBasic;
 	unsigned char status;
-	asm_descTable_t gdt;
+	asm_descTable_t gdt, idtDesc;
+	vmx_segSel_t trSel;
 
 	currVmx = &vmx[KeGetCurrentProcessorNumberEx(NULL)];
 
@@ -126,7 +136,6 @@ ULONG_PTR nrot_vmx_init(ULONG_PTR ctx) {
 	status = __vmx_vmclear(&physVmcs);
 	if (status) {
 		DbgPrint("[IWA] vmclear failed %u\n", status);
-		currVmx->isOn = 0;
 		__vmx_off();
 		return 0;
 	}
@@ -134,12 +143,32 @@ ULONG_PTR nrot_vmx_init(ULONG_PTR ctx) {
 	status = __vmx_vmptrld(&physVmcs);
 	if (status) {
 		DbgPrint("[IWA] vmptrld failed %u\n", status);
-		currVmx->isOn = 0;
 		__vmx_off();
 		return 0;
 	}
 
 	//setup vmcs
+	__vmx_vmwrite(VMCS_HOST_ES_SELECTOR, both_asm_getEs() & 0xf8);
+	__vmx_vmwrite(VMCS_HOST_CS_SELECTOR, both_asm_getCs() & 0xf8);
+	__vmx_vmwrite(VMCS_HOST_SS_SELECTOR, both_asm_getSs() & 0xf8);
+	__vmx_vmwrite(VMCS_HOST_DS_SELECTOR, both_asm_getDs() & 0xf8);
+	__vmx_vmwrite(VMCS_HOST_FS_SELECTOR, both_asm_getFs() & 0xf8);
+	__vmx_vmwrite(VMCS_HOST_GS_SELECTOR, both_asm_getGs() & 0xf8);
+	__vmx_vmwrite(VMCS_HOST_TR_SELECTOR, both_asm_getTr() & 0xf8);
+
+	__vmx_vmwrite(VMCS_VMCS_LINK_POINTER, ~0ULL);
+
+	__vmx_vmwrite(VMCS_GUEST_DEBUGCTL, __readmsr(MSR_DEBUGCTL));
+
+	__vmx_vmwrite(VMCS_TSC_OFFSET, 0);
+
+	__vmx_vmwrite(VMCS_PAGE_FAULT_ERROR_CODE_MASK, 0);
+	__vmx_vmwrite(VMCS_PAGE_FAULT_ERROR_CODE_MATCH, 0);
+	__vmx_vmwrite(VMCS_VMEXIT_MSR_STORE_COUNT, 0);
+	__vmx_vmwrite(VMCS_VMEXIT_MSR_LOAD_COUNT, 0);
+	__vmx_vmwrite(VMCS_VMENTRY_MSR_LOAD_COUNT, 0);
+	__vmx_vmwrite(VMCS_VMENTRY_INTERRUPTION_INFORMATION, 0);
+
 	both_asm_getGdt(&gdt);
 	both_vmx_vmcsSetSegReg(gdt.base, SEGREG_ES, both_asm_getEs());
 	both_vmx_vmcsSetSegReg(gdt.base, SEGREG_CS, both_asm_getCs());
@@ -149,9 +178,73 @@ ULONG_PTR nrot_vmx_init(ULONG_PTR ctx) {
 	both_vmx_vmcsSetSegReg(gdt.base, SEGREG_GS, both_asm_getGs());
 	both_vmx_vmcsSetSegReg(gdt.base, SEGREG_LDTR, both_asm_getLdtr());
 	both_vmx_vmcsSetSegReg(gdt.base, SEGREG_TR, both_asm_getTr());
+	__vmx_vmwrite(VMCS_GUEST_FS_BASE, __readmsr(MSR_FS_BASE));
+	__vmx_vmwrite(VMCS_GUEST_GS_BASE, __readmsr(MSR_GS_BASE));
+
+	__vmx_vmwrite(VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS, both_vmx_adjustCtrls(
+		VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_USE_MSR_BITMAPS | VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_ACTIVATE_SECONDARY_CTRLS,
+		vmxBasic.vmxCap ? MSR_VMX_TRUE_PROCBASED_CTLS : MSR_VMX_PROCBASED_CTLS
+	));
+
+	__vmx_vmwrite(VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS, both_vmx_adjustCtrls(
+		VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS_ENABLE_EPT | VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS_ENABLE_RDTSCP | VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS_ENABLE_INVPCID | VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS_ENABLE_XSAVES_XRSTORS,
+		MSR_VMX_PROCBASED_CTLS2
+	));
+
+	__vmx_vmwrite(VMCS_PIN_BASED_EXEC_CTRLS, both_vmx_adjustCtrls(0, vmxBasic.vmxCap ? MSR_VMX_TRUE_PINBASED_CTLS : MSR_VMX_PINBASED_CTLS));
+	__vmx_vmwrite(VMCS_PRIMARY_VMEXIT_CTRLS, both_vmx_adjustCtrls(VMCS_PRIMARY_VMEXIT_CTRLS_HOST_ADDRESS_SPACE_SIZE, vmxBasic.vmxCap ? MSR_VMX_TRUE_EXIT_CTLS : MSR_VMX_EXIT_CTLS));
+	__vmx_vmwrite(VMCS_VMENTRY_CTRLS, both_vmx_adjustCtrls(VMCS_VMENTRY_CTRLS_IA32E_MODE_GUEST, vmxBasic.vmxCap ? MSR_VMX_TRUE_ENTRY_CTLS : MSR_VMX_ENTRY_CTLS));
+
+	__vmx_vmwrite(VMCS_CR0_GUEST_HOST_MASK, 0);
+	__vmx_vmwrite(VMCS_CR4_GUEST_HOST_MASK, 0);
+
+	__vmx_vmwrite(VMCS_CR0_READ_SHADOW, 0);
+	__vmx_vmwrite(VMCS_CR4_READ_SHADOW, 0);
+
+	__vmx_vmwrite(VMCS_GUEST_CR0, __readcr0());
+	__vmx_vmwrite(VMCS_GUEST_CR3, __readcr3());
+	__vmx_vmwrite(VMCS_GUEST_CR4, __readcr4());
+
+	__vmx_vmwrite(VMCS_GUEST_DR7, 0x400);
+
+	__vmx_vmwrite(VMCS_HOST_CR0, __readcr0());
+	__vmx_vmwrite(VMCS_HOST_CR3, PsInitialSystemProcess->directoryTableBase);
+	__vmx_vmwrite(VMCS_HOST_CR4, __readcr4());
+
+	__vmx_vmwrite(VMCS_GUEST_GDTR_BASE, gdt.base);
+	__vmx_vmwrite(VMCS_GUEST_GDTR_LIMIT, gdt.limit);
+	__sidt(&idtDesc);
+	__vmx_vmwrite(VMCS_GUEST_IDTR_BASE, idtDesc.base);
+	__vmx_vmwrite(VMCS_GUEST_IDTR_LIMIT, idtDesc.limit);
+
+	__vmx_vmwrite(VMCS_GUEST_RFLAGS, both_asm_getRflags());
+
+	__vmx_vmwrite(VMCS_GUEST_SYSENTER_CS, __readmsr(MSR_SYSENTER_CS));
+	__vmx_vmwrite(VMCS_GUEST_SYSENTER_ESP, __readmsr(MSR_SYSENTER_ESP));
+	__vmx_vmwrite(VMCS_GUEST_SYSENTER_EIP, __readmsr(MSR_SYSENTER_EIP));
+
+	both_vmx_getSegDesc(gdt.base, SEGREG_TR, &trSel);
+	__vmx_vmwrite(VMCS_HOST_TR_BASE, trSel.base);
+
+	__vmx_vmwrite(VMCS_HOST_FS_BASE, __readmsr(MSR_FS_BASE));
+	__vmx_vmwrite(VMCS_HOST_GS_BASE, __readmsr(MSR_GS_BASE));
+
+	__vmx_vmwrite(VMCS_HOST_GDTR_BASE, gdt.base);
+	__vmx_vmwrite(VMCS_HOST_IDTR_BASE, idt);
+
+	__vmx_vmwrite(VMCS_HOST_SYSENTER_CS, __readmsr(MSR_SYSENTER_CS));
+	__vmx_vmwrite(VMCS_HOST_SYSENTER_ESP, __readmsr(MSR_SYSENTER_ESP));
+	__vmx_vmwrite(VMCS_HOST_SYSENTER_EIP, __readmsr(MSR_SYSENTER_EIP));
+
+	__vmx_vmwrite(VMCS_ADDRESS_OF_MSR_BITMAPS, both_util_getPhysical(currVmx->msrBitmap));
+
+	__vmx_vmwrite(VMCS_EPT_POINTER, ept->eptp.value);
+
+	__vmx_vmwrite(VMCS_HOST_RSP, ((ULONG64)currVmx->stack) + SIZE_VMX_STACK);
+
+	__vmx_vmwrite(VMCS_HOST_RIP, root_asm_vmexit);
 
 	if (!nrot_asm_vmlaunch()) {
-		currVmx->isOn = 0;
 		__vmx_vmread(VMCS_INSTRUCTION_ERROR, &err);
 		DbgPrint("[IWA] vmlaunch failed %llu\n", err);
 		__vmx_off();
@@ -187,9 +280,17 @@ ULONG64 root_vmx_vmexit(vmx_regCtx_t *ctx) {
 	UINT8 fxmem[512];
 	_fxsave64(fxmem);
 
+	DbgPrint("[IWA] " __FUNCTION__ "\n");
 
 	_fxrstor64(fxmem);
 	return 1;
+}
+
+void eror_vmx_vmresumeError() {
+	ULONG64 err;
+	__vmx_vmread(VMCS_INSTRUCTION_ERROR, &err);
+	DbgPrint("[IWA] vmlaunch failed %llu\n", err);
+	__debugbreak();
 }
 
 ULONG_PTR nrot_vmx_exit(ULONG_PTR ctx) {
