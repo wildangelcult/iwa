@@ -110,6 +110,16 @@ root_asm_vmexit PROC
 	jmp eror_vmx_vmresumeError
 root_asm_vmexit ENDP
 
+both_asm_vmcall PROC
+	vmcall
+	ret
+both_asm_vmcall ENDP
+
+root_asm_invept PROC
+	invept rcx, oword ptr [rdx]
+	ret
+root_asm_invept ENDP
+
 both_asm_getGdt PROC
 	sgdt fword ptr [rcx]
 	ret

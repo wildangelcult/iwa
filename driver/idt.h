@@ -1,6 +1,8 @@
 #ifndef __IDT_H
 #define __IDT_H
 
+#define IDT_NMI	0x2
+
 typedef union idt_entry_u {
 	__m128 value;
 	struct {

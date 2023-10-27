@@ -12,6 +12,10 @@ ULONG64 nrot_asm_vmlaunch();
 void root_asm_idtNmiHandler();
 void root_asm_vmexit();
 
+ULONG64 both_asm_vmcall(ULONG64 param1, ULONG64 param2, ULONG64 param3);
+
+void root_asm_invept(ULONG64 type, ept_invept_t *desc);
+
 void both_asm_getGdt(asm_descTable_t *gdt);
 UINT16 both_asm_getEs();
 UINT16 both_asm_getCs();

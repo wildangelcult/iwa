@@ -87,6 +87,13 @@ typedef struct ept_ept_s {
 	ept_eptp_t eptp;
 } ept_ept_t;
 
+#define EPT_INVEPT_SINGLE_CONTEXT 1
+
+typedef struct ept_invept_s {
+	ULONG64 eptp;
+	ULONG64 reserved;
+} ept_invept_t;
+
 extern ept_ept_t *ept;
 
 BOOLEAN nrot_ept_init();

@@ -1,10 +1,9 @@
 #include "hv.h"
 
 #define GATETYPE_INTERRUPT_GATE	0xe
-#define IDT_NMI					0x2
 
 void root_idt_nmiHandler() {
-	ULONG64 primaryCtrls;
+	ULONG32 primaryCtrls;
 	__vmx_vmread(VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS, &primaryCtrls);
 	primaryCtrls |= VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_NMI_WINDOW_EXITING;
 	__vmx_vmwrite(VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_NMI_WINDOW_EXITING, primaryCtrls);

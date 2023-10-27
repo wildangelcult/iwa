@@ -75,7 +75,7 @@ BOOLEAN nrot_cpu_checkFeatures() {
 	__cpuid(data, 0);
 	if (memcmp(&data[1], intel, sizeof(intel))) return FALSE;
 
-	__cpuid(data, 0);
+	__cpuid(data, 1);
 	if (!(data[2] & (1 << 5))) return FALSE;
 
 	featCtrl.value = __readmsr(MSR_FEATURE_CONTROL);

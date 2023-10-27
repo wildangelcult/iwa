@@ -3,6 +3,17 @@
 
 #define SIZE_VMX_STACK 0x8000
 
+#define VMX_RFLAGS_CARRY_FLAG										(1 << 0)
+#define VMX_RFLAGS_TRAP_FLAG										(1 << 8)
+#define VMX_DEBUGCTL_BTF											(1 << 1)
+
+#define VMX_HYPERV_HV_PRESENT										(1 << 31)
+#define VMX_HYPERV_VENDOR											0x40000000
+#define VMX_HYPERV_INTERFACE										0x40000001
+
+#define VMCS_PIN_BASED_NMI_EXITING									(1 << 3)
+#define VMCS_PIN_BASED_VIRTUAL_NMIS									(1 << 5)
+
 #define VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_NMI_WINDOW_EXITING		(1 << 22)
 #define VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_USE_MSR_BITMAPS			(1 << 28)
 #define VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_ACTIVATE_SECONDARY_CTRLS	(1 << 31)
@@ -15,6 +26,58 @@
 #define VMCS_PRIMARY_VMEXIT_CTRLS_HOST_ADDRESS_SPACE_SIZE			(1 << 9)
 
 #define VMCS_VMENTRY_CTRLS_IA32E_MODE_GUEST							(1 << 9)
+
+#define VMCS_EXIT_REASON_EXCEPTION_OR_NMI							0
+#define VMCS_EXIT_REASON_TRIPLE_FAULT								2
+#define VMCS_EXIT_REASON_INIT_SIGNAL								3
+#define VMCS_EXIT_REASON_SIPI										4
+#define VMCS_EXIT_REASON_SMI										5
+#define VMCS_EXIT_REASON_OTHER_SMI									6
+#define VMCS_EXIT_REASON_NMI_WINDOW									8
+#define VMCS_EXIT_REASON_TASK_SWITCH								9
+#define VMCS_EXIT_REASON_CPUID										10
+#define VMCS_EXIT_REASON_GETSEC										11
+#define VMCS_EXIT_REASON_INVD										13
+#define VMCS_EXIT_REASON_RSM										17
+#define VMCS_EXIT_REASON_VMCALL										18
+#define VMCS_EXIT_REASON_VMCLEAR									19
+#define VMCS_EXIT_REASON_VMLAUNCH									20
+#define VMCS_EXIT_REASON_VMPTRLD									21
+#define VMCS_EXIT_REASON_VMPTRST									22
+#define VMCS_EXIT_REASON_VMREAD										23
+#define VMCS_EXIT_REASON_VMRESUME									24
+#define VMCS_EXIT_REASON_VMWRITE									25
+#define VMCS_EXIT_REASON_VMXOFF										26
+#define VMCS_EXIT_REASON_VMXON										27
+#define VMCS_EXIT_REASON_CR_ACCESS									28
+#define VMCS_EXIT_REASON_RDMSR										31
+#define VMCS_EXIT_REASON_WRMSR										32
+#define VMCS_EXIT_REASON_VMENTRY_FAILURE_INVALID_GUEST_STATE		33
+#define VMCS_EXIT_REASON_VMENTRY_FAILURE_MSR_LOADING				34
+#define VMCS_EXIT_REASON_MONITOR_TRAP_FLAG							37
+#define VMCS_EXIT_REASON_VMENTRY_FAILURE_MACHINE_CHECK_EVENT		41
+#define VMCS_EXIT_REASON_EPT_VIOLATION								48
+#define VMCS_EXIT_REASON_EPT_MISCONFIGURATION						49
+#define VMCS_EXIT_REASON_INVEPT										50
+#define VMCS_EXIT_REASON_VMX_PREEMPTION_TIMER_EXPIRED				52
+#define VMCS_EXIT_REASON_INVVPID									53
+#define VMCS_EXIT_REASON_XSETBV										55
+#define VMCS_EXIT_REASON_APIC_WRITE									56
+#define VMCS_EXIT_REASON_VMFUNC										59
+#define VMCS_EXIT_REASON_PAGE_MODIFICATION_LOG_FULL					62
+#define VMCS_EXIT_REASON_SPP_RELATED_EVENT							66
+#define VMCS_EXIT_REASON_ENQCMD_PASID_TRANSLATION_FAILURE			72
+#define VMCS_EXIT_REASON_ENQCMDS_PASID_TRANSLATION_FAILURE			73
+#define VMCS_EXIT_REASON_SEAMCALL									76
+#define VMCS_EXIT_REASON_TDCALL										77
+
+#define VMCS_GUEST_PENDING_DEBUG_EXCEPTIONS_BS						(1 << 14)
+
+#define VMCS_GUEST_INTERRUPTIBILITY_STATE_BLOCKING_BY_STI			(1 << 0)
+#define VMCS_GUEST_INTERRUPTIBILITY_STATE_BLOCKING_BY_MOV_SS		(1 << 1)
+
+#define VMCS_EXIT_QUALIFICATION_CR_ACCESS_ACCESS_TYPE_MOV_TO_CR		0
+#define VMCS_EXIT_QUALIFICATION_CR_ACCESS_ACCESS_TYPE_MOV_FROM_CR	1
 
 #define VMCS_GUEST_ES_SELECTOR										0x800
 #define VMCS_HOST_ES_SELECTOR										0xC00
@@ -41,16 +104,20 @@
 #define VMCS_VMENTRY_INTERRUPTION_INFORMATION						0x4016
 #define VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS						0x401E
 #define VMCS_INSTRUCTION_ERROR										0x4400
+#define VMCS_EXIT_REASON											0x4402
+#define VMCS_VMEXIT_INSTRUCTION_LENGTH								0x440C
 #define VMCS_GUEST_ES_LIMIT											0x4800
 #define VMCS_GUEST_GDTR_LIMIT										0x4810
 #define VMCS_GUEST_IDTR_LIMIT										0x4812
 #define VMCS_GUEST_ES_AR											0x4814
+#define VMCS_GUEST_INTERRUPTIBILITY_STATE							0x4824
 #define VMCS_GUEST_SYSENTER_CS										0x482A
 #define VMCS_HOST_SYSENTER_CS										0x4C00
 #define VMCS_CR0_GUEST_HOST_MASK									0x6000
 #define VMCS_CR4_GUEST_HOST_MASK									0x6002
 #define VMCS_CR0_READ_SHADOW										0x6004
 #define VMCS_CR4_READ_SHADOW										0x6006
+#define VMCS_EXIT_QUALIFICATION										0x6400
 #define VMCS_GUEST_CR0												0x6800
 #define VMCS_GUEST_CR3												0x6802
 #define VMCS_GUEST_CR4												0x6804
@@ -60,7 +127,10 @@
 #define VMCS_GUEST_GDTR_BASE										0x6816
 #define VMCS_GUEST_IDTR_BASE										0x6818
 #define VMCS_GUEST_DR7												0x681A
+#define VMCS_GUEST_RSP												0x681C
+#define VMCS_GUEST_RIP												0x681E
 #define VMCS_GUEST_RFLAGS											0x6820
+#define VMCS_GUEST_PENDING_DEBUG_EXCEPTIONS							0x6822
 #define VMCS_GUEST_SYSENTER_ESP										0x6824
 #define VMCS_GUEST_SYSENTER_EIP										0x6826
 #define VMCS_HOST_CR0												0x6C00
@@ -75,6 +145,31 @@
 #define VMCS_HOST_SYSENTER_EIP										0x6C12
 #define VMCS_HOST_RSP												0x6C14
 #define VMCS_HOST_RIP												0x6C16
+
+typedef union vmcs_interruptionInformation_u {
+	ULONG32 value;
+	struct {
+		ULONG32 vector			: 8;
+		ULONG32 interruptType	: 3;
+		ULONG32 deliverError	: 1;
+		ULONG32 _reserved		: 19;
+		ULONG32 valid			: 1;
+	};
+} vmcs_interruptionInformation_t;
+
+typedef union vmcs_exitQualCrAccess_u {
+	ULONG64 value;
+	struct {
+		ULONG64 cr			: 4;
+		ULONG64 accessType	: 2;
+		ULONG64 lmswType	: 1;
+		ULONG64 _undefined1	: 1;
+		ULONG64 gpr			: 4;
+		ULONG64 _undefined2 : 4;
+		ULONG64 lmswData	: 16;
+		ULONG64 _rest		: 32;
+	};
+} vmcs_exitQualCrAccess_t;
 
 typedef struct vmx_vmx_s {
 	int isOn;

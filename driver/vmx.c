@@ -191,7 +191,11 @@ ULONG_PTR nrot_vmx_init(ULONG_PTR ctx) {
 		MSR_VMX_PROCBASED_CTLS2
 	));
 
-	__vmx_vmwrite(VMCS_PIN_BASED_EXEC_CTRLS, both_vmx_adjustCtrls(0, vmxBasic.vmxCap ? MSR_VMX_TRUE_PINBASED_CTLS : MSR_VMX_PINBASED_CTLS));
+	__vmx_vmwrite(VMCS_PIN_BASED_EXEC_CTRLS, both_vmx_adjustCtrls(
+		/*VMCS_PIN_BASED_NMI_EXITING | VMCS_PIN_BASED_VIRTUAL_NMIS*/ 0,
+		vmxBasic.vmxCap ? MSR_VMX_TRUE_PINBASED_CTLS : MSR_VMX_PINBASED_CTLS
+	));
+
 	__vmx_vmwrite(VMCS_PRIMARY_VMEXIT_CTRLS, both_vmx_adjustCtrls(VMCS_PRIMARY_VMEXIT_CTRLS_HOST_ADDRESS_SPACE_SIZE, vmxBasic.vmxCap ? MSR_VMX_TRUE_EXIT_CTLS : MSR_VMX_EXIT_CTLS));
 	__vmx_vmwrite(VMCS_VMENTRY_CTRLS, both_vmx_adjustCtrls(VMCS_VMENTRY_CTRLS_IA32E_MODE_GUEST, vmxBasic.vmxCap ? MSR_VMX_TRUE_ENTRY_CTLS : MSR_VMX_ENTRY_CTLS));
 
@@ -230,7 +234,8 @@ ULONG_PTR nrot_vmx_init(ULONG_PTR ctx) {
 	__vmx_vmwrite(VMCS_HOST_GS_BASE, __readmsr(MSR_GS_BASE));
 
 	__vmx_vmwrite(VMCS_HOST_GDTR_BASE, gdt.base);
-	__vmx_vmwrite(VMCS_HOST_IDTR_BASE, idt);
+	//__vmx_vmwrite(VMCS_HOST_IDTR_BASE, idt);
+	__vmx_vmwrite(VMCS_HOST_IDTR_BASE, idtDesc.base);
 
 	__vmx_vmwrite(VMCS_HOST_SYSENTER_CS, __readmsr(MSR_SYSENTER_CS));
 	__vmx_vmwrite(VMCS_HOST_SYSENTER_ESP, __readmsr(MSR_SYSENTER_ESP));
@@ -253,7 +258,7 @@ ULONG_PTR nrot_vmx_init(ULONG_PTR ctx) {
 
 	currVmx->isOn = 1;
 
-	DbgPrint("[IWA] " __FUNCTION__ "\n");
+	//DbgPrint("[IWA] " __FUNCTION__ "\n");
 	return 0;
 }
 
@@ -276,14 +281,180 @@ typedef struct vmx_regCtx_s {
 	ULONG64 r15;
 } vmx_regCtx_t;
 
+void root_vmx_invept() {
+	ept_invept_t desc;
+	desc.eptp = ept->eptp.value;
+	desc.reserved = 0;
+	root_asm_invept(EPT_INVEPT_SINGLE_CONTEXT, &desc);
+}
+
 ULONG64 root_vmx_vmexit(vmx_regCtx_t *ctx) {
 	UINT8 fxmem[512];
+	ULONG64 rip, instLen, rflags, debugCtl, pendingDbg, *gpr;
+	ULARGE_INTEGER msrValue;
+	ULONG32 exitReason, interrupt, primaryCtrls;
+	INT32 cpuidData[4];
+	ULONG result = 1;
+	vmcs_interruptionInformation_t intInfo;
+	vmcs_exitQualCrAccess_t crAccessQual;
+
 	_fxsave64(fxmem);
 
-	DbgPrint("[IWA] " __FUNCTION__ "\n");
+	__vmx_vmread(VMCS_EXIT_REASON, &exitReason);
+
+	switch (exitReason) {
+		case VMCS_EXIT_REASON_EXCEPTION_OR_NMI:
+			break; //nmi exiting doesnt work with windbg
+			__vmx_vmread(VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS, &primaryCtrls);
+			primaryCtrls |= VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_NMI_WINDOW_EXITING;
+			__vmx_vmwrite(VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_NMI_WINDOW_EXITING, primaryCtrls);
+			goto dontSkipInst;
+		case VMCS_EXIT_REASON_NMI_WINDOW:
+			intInfo.value = 0;
+			intInfo.interruptType = IDT_NMI;
+			intInfo.vector = EXCEPTION_NMI;
+			intInfo.valid = 1;
+			__vmx_vmwrite(VMCS_VMENTRY_INTERRUPTION_INFORMATION, intInfo.value);
+			__vmx_vmread(VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS, &primaryCtrls);
+			primaryCtrls &= ~VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_NMI_WINDOW_EXITING;
+			__vmx_vmwrite(VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_NMI_WINDOW_EXITING, primaryCtrls);
+			goto dontSkipInst;
+		case VMCS_EXIT_REASON_CPUID:
+			__cpuidex(cpuidData, ctx->rax, ctx->rcx);
+			switch (ctx->rax) {
+				case 1:
+					cpuidData[2] |= VMX_HYPERV_HV_PRESENT;
+					break;
+				case VMX_HYPERV_VENDOR:
+					cpuidData[0] = VMX_HYPERV_INTERFACE;
+					cpuidData[1] = 'rUmI';
+					cpuidData[2] = 'revO';
+					cpuidData[3] = 'rees';
+					break;
+				case VMX_HYPERV_INTERFACE:
+					cpuidData[0] = '0#vH';
+					cpuidData[1] = cpuidData[2] = cpuidData[3] = 0;
+					break;
+				default:
+					break;
+			}
+			ctx->rax = cpuidData[0];
+			ctx->rbx = cpuidData[1];
+			ctx->rcx = cpuidData[2];
+			ctx->rdx = cpuidData[3];
+			break;
+		case VMCS_EXIT_REASON_INVD:
+			__wbinvd();
+			break;
+		case VMCS_EXIT_REASON_VMCALL:
+			__vmx_vmread(VMCS_GUEST_RIP, &rip);
+			if (rip == both_asm_vmcall) {
+				//vmxoff
+			} else {
+				ctx->rax = both_asm_vmcall(ctx->rcx, ctx->rdx, ctx->r8);
+			}
+			break;
+		case VMCS_EXIT_REASON_VMCLEAR:
+		case VMCS_EXIT_REASON_VMLAUNCH:
+		case VMCS_EXIT_REASON_VMPTRLD:
+		case VMCS_EXIT_REASON_VMPTRST:
+		case VMCS_EXIT_REASON_VMREAD:
+		case VMCS_EXIT_REASON_VMRESUME:
+		case VMCS_EXIT_REASON_VMWRITE:
+		case VMCS_EXIT_REASON_VMXOFF:
+		case VMCS_EXIT_REASON_VMXON:
+		case VMCS_EXIT_REASON_VMFUNC:
+		case VMCS_EXIT_REASON_INVEPT:
+		case VMCS_EXIT_REASON_INVVPID:
+			__vmx_vmread(VMCS_GUEST_RFLAGS, &rflags);
+			rflags |= VMX_RFLAGS_CARRY_FLAG;
+			__vmx_vmwrite(VMCS_GUEST_RFLAGS, rflags);
+			break;
+		case VMCS_EXIT_REASON_CR_ACCESS:
+			__vmx_vmread(VMCS_EXIT_QUALIFICATION, &crAccessQual.value);
+
+			gpr = &(&ctx->rax)[crAccessQual.gpr];
+
+			if (crAccessQual.gpr == 4) __vmx_vmread(VMCS_GUEST_RSP, gpr);
+
+			if (crAccessQual.accessType == VMCS_EXIT_QUALIFICATION_CR_ACCESS_ACCESS_TYPE_MOV_TO_CR) {
+				switch (crAccessQual.cr) {
+					case 0:
+						__vmx_vmwrite(VMCS_GUEST_CR0, *gpr);
+						__vmx_vmwrite(VMCS_CR0_READ_SHADOW, *gpr);
+						break;
+					case 3:
+						__vmx_vmwrite(VMCS_GUEST_CR3, *gpr & ~(1ULL << 63));
+						root_vmx_invept();
+						break;
+					case 4:
+						__vmx_vmwrite(VMCS_GUEST_CR4, *gpr);
+						__vmx_vmwrite(VMCS_CR4_READ_SHADOW, *gpr);
+						break;
+				}
+			} else if (crAccessQual.accessType == VMCS_EXIT_QUALIFICATION_CR_ACCESS_ACCESS_TYPE_MOV_FROM_CR) {
+				switch (crAccessQual.cr) {
+					case 0:
+						__vmx_vmread(VMCS_GUEST_CR0, gpr);
+						break;
+					case 3:
+						__vmx_vmread(VMCS_GUEST_CR0, gpr);
+						break;
+					case 4:
+						__vmx_vmread(VMCS_GUEST_CR0, gpr);
+						break;
+				}
+			}
+			break;
+		case VMCS_EXIT_REASON_RDMSR:
+			msrValue.QuadPart = 0;
+			if ((ctx->rcx <= 0x00001FFF) || ((ctx->rcx >= 0xC0000000) && (ctx->rcx <= 0xC0001FFF)) || ((ctx->rcx >= 0x40000000) && ctx->rcx <= 0x400000F0)) {
+				msrValue.QuadPart = __readmsr(ctx->rcx);
+			}
+			ctx->rax = msrValue.LowPart;
+			ctx->rdx = msrValue.HighPart;
+			break;
+		case VMCS_EXIT_REASON_WRMSR:
+			if ((ctx->rcx <= 0x00001FFF) || ((ctx->rcx >= 0xC0000000) && (ctx->rcx <= 0xC0001FFF)) || ((ctx->rcx >= 0x40000000) && ctx->rcx <= 0x400000F0)) {
+				msrValue.LowPart = ctx->rax;
+				msrValue.HighPart = ctx->rdx;
+				__writemsr(ctx->rcx, msrValue.QuadPart);
+			}
+			break;
+		case VMCS_EXIT_REASON_MONITOR_TRAP_FLAG:
+			goto dontSkipInst;
+		case VMCS_EXIT_REASON_EPT_VIOLATION:
+			goto dontSkipInst; //or maybe we fucked
+		case VMCS_EXIT_REASON_EPT_MISCONFIGURATION:
+			DbgPrint("[IWA] EPT is fucked\n");
+			break;
+		default:
+			break;
+	}
+
+	__vmx_vmread(VMCS_GUEST_RIP, &rip);
+	__vmx_vmread(VMCS_VMEXIT_INSTRUCTION_LENGTH, &instLen);
+	__vmx_vmwrite(VMCS_GUEST_RIP, rip + instLen);
+
+	__vmx_vmread(VMCS_GUEST_RFLAGS, &rflags);
+	__vmx_vmread(VMCS_GUEST_DEBUGCTL, &debugCtl);
+
+	if ((rflags & VMX_RFLAGS_TRAP_FLAG) && !(debugCtl & VMX_DEBUGCTL_BTF)) {
+		__vmx_vmread(VMCS_GUEST_PENDING_DEBUG_EXCEPTIONS, &pendingDbg);
+		pendingDbg |= VMCS_GUEST_PENDING_DEBUG_EXCEPTIONS_BS;
+		__vmx_vmwrite(VMCS_GUEST_PENDING_DEBUG_EXCEPTIONS, pendingDbg);
+	}
+
+	__vmx_vmread(VMCS_GUEST_INTERRUPTIBILITY_STATE, &interrupt);
+	interrupt &= ~(VMCS_GUEST_INTERRUPTIBILITY_STATE_BLOCKING_BY_STI | VMCS_GUEST_INTERRUPTIBILITY_STATE_BLOCKING_BY_MOV_SS);
+	__vmx_vmwrite(VMCS_GUEST_INTERRUPTIBILITY_STATE, interrupt);
+
+dontSkipInst:
+
+	DbgPrint("[IWA] " __FUNCTION__ " %u\n", exitReason);
 
 	_fxrstor64(fxmem);
-	return 1;
+	return result;
 }
 
 void eror_vmx_vmresumeError() {
