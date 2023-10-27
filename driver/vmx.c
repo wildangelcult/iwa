@@ -187,7 +187,7 @@ ULONG_PTR nrot_vmx_init(ULONG_PTR ctx) {
 	));
 
 	__vmx_vmwrite(VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS, both_vmx_adjustCtrls(
-		VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS_ENABLE_EPT | VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS_ENABLE_RDTSCP | VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS_ENABLE_INVPCID | VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS_ENABLE_XSAVES_XRSTORS,
+		/*VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS_ENABLE_EPT |*/ VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS_ENABLE_RDTSCP | VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS_ENABLE_INVPCID | VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS_ENABLE_XSAVES_XRSTORS,
 		MSR_VMX_PROCBASED_CTLS2
 	));
 
@@ -308,6 +308,33 @@ ULONG64 root_vmx_vmexit(vmx_regCtx_t *ctx) {
 			__vmx_vmread(VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS, &primaryCtrls);
 			primaryCtrls |= VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_NMI_WINDOW_EXITING;
 			__vmx_vmwrite(VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_NMI_WINDOW_EXITING, primaryCtrls);
+			goto dontSkipInst;
+		case VMCS_EXIT_REASON_TRIPLE_FAULT:
+			__vmx_vmread(VMCS_GUEST_RSP, (PULONG64)&gpr);
+			__vmx_vmread(VMCS_GUEST_RIP, &rip);
+			DbgPrint("[IWA] %u Triple fault ctx= %p rsp= %p rip= %p\n", KeGetCurrentProcessorNumberEx(NULL), ctx, gpr, rip);
+			/*
+			intInfo.value = 0;
+			intInfo.interruptType = 6;
+			intInfo.vector = 3;
+			intInfo.valid = 1;
+			__vmx_vmwrite(VMCS_VMENTRY_INTERRUPTION_INFORMATION, intInfo.value);
+			*/
+			/*
+			__vmx_vmread(VMCS_VMEXIT_INSTRUCTION_LENGTH, &instLen);
+			ULONG64 hostCr3, guestCr3;
+			__vmx_vmread(VMCS_GUEST_CR3, &guestCr3);
+			hostCr3 = __readcr3();
+
+			__writecr3(guestCr3);
+			__writecr0(__readcr0() & ~(1ULL << 16));
+			for (; instLen; --instLen) {
+				((PUINT8)rip)[instLen - 1] = 0xcc;
+			}
+			__writecr0(__readcr0() | (1ULL << 16));
+			__writecr3(hostCr3);
+			*/
+
 			goto dontSkipInst;
 		case VMCS_EXIT_REASON_NMI_WINDOW:
 			intInfo.value = 0;
@@ -451,7 +478,7 @@ ULONG64 root_vmx_vmexit(vmx_regCtx_t *ctx) {
 
 dontSkipInst:
 
-	DbgPrint("[IWA] " __FUNCTION__ " %u\n", exitReason);
+	DbgPrint("[IWA] %u " __FUNCTION__ " %u\n", KeGetCurrentProcessorNumberEx(NULL), exitReason);
 
 	_fxrstor64(fxmem);
 	return result;
