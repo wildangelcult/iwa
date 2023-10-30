@@ -123,7 +123,7 @@ ULONG_PTR nrot_vmx_init(ULONG_PTR ctx) {
 	*((PULONG64)currVmx->vmxon) = vmxBasic.revId;
 	*((PULONG64)currVmx->vmcs) = vmxBasic.revId;
 
-	physVmxon = both_util_getPhysical(vmx->vmxon);
+	physVmxon = both_util_getPhysical(currVmx->vmxon);
 	status = __vmx_on(&physVmxon);
 	if (status) {
 		DbgPrint("[IWA] vmxon failed %u\n", status);
@@ -246,15 +246,20 @@ ULONG_PTR nrot_vmx_init(ULONG_PTR ctx) {
 	__vmx_vmwrite(VMCS_EPT_POINTER, ept->eptp.value);
 
 	__vmx_vmwrite(VMCS_HOST_RSP, ((ULONG64)currVmx->stack) + SIZE_VMX_STACK);
+	DbgPrint("[IWA] %u host rsp= %p - %p\n", KeGetCurrentProcessorNumberEx(NULL), currVmx->stack, ((ULONG64)currVmx->stack) + SIZE_VMX_STACK);
 
 	__vmx_vmwrite(VMCS_HOST_RIP, root_asm_vmexit);
 
+	DbgPrint("[IWA] %u\n", KeGetCurrentProcessorNumberEx(NULL));
+	__debugbreak();
 	if (!nrot_asm_vmlaunch()) {
 		__vmx_vmread(VMCS_INSTRUCTION_ERROR, &err);
 		DbgPrint("[IWA] vmlaunch failed %llu\n", err);
 		__vmx_off();
 		return 0;
 	}
+	DbgPrint("[IWA] %u\n", KeGetCurrentProcessorNumberEx(NULL));
+	__debugbreak();
 
 	currVmx->isOn = 1;
 
@@ -348,6 +353,7 @@ ULONG64 root_vmx_vmexit(vmx_regCtx_t *ctx) {
 			goto dontSkipInst;
 		case VMCS_EXIT_REASON_CPUID:
 			__cpuidex(cpuidData, ctx->rax, ctx->rcx);
+			/*
 			switch (ctx->rax) {
 				case 1:
 					cpuidData[2] |= VMX_HYPERV_HV_PRESENT;
@@ -365,6 +371,7 @@ ULONG64 root_vmx_vmexit(vmx_regCtx_t *ctx) {
 				default:
 					break;
 			}
+			*/
 			ctx->rax = cpuidData[0];
 			ctx->rbx = cpuidData[1];
 			ctx->rcx = cpuidData[2];
@@ -440,6 +447,7 @@ ULONG64 root_vmx_vmexit(vmx_regCtx_t *ctx) {
 			}
 			ctx->rax = msrValue.LowPart;
 			ctx->rdx = msrValue.HighPart;
+			DbgPrint("[IWA] rdmsr rcx= %p rax= %p rdx= %p\n", ctx->rcx, ctx->rax, ctx->rdx);
 			break;
 		case VMCS_EXIT_REASON_WRMSR:
 			if ((ctx->rcx <= 0x00001FFF) || ((ctx->rcx >= 0xC0000000) && (ctx->rcx <= 0xC0001FFF)) || ((ctx->rcx >= 0x40000000) && ctx->rcx <= 0x400000F0)) {
