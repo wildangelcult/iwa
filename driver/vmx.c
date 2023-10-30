@@ -1,6 +1,8 @@
 #include "hv.h"
 #include "util.h"
 
+#define DbgPrint
+
 vmx_vmx_t *vmx;
 
 typedef struct vmx_kprocess_s {
@@ -187,7 +189,7 @@ ULONG_PTR nrot_vmx_init(ULONG_PTR ctx) {
 	));
 
 	__vmx_vmwrite(VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS, both_vmx_adjustCtrls(
-		/*VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS_ENABLE_EPT |*/ VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS_ENABLE_RDTSCP | VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS_ENABLE_INVPCID | VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS_ENABLE_XSAVES_XRSTORS,
+		VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS_ENABLE_EPT | VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS_ENABLE_RDTSCP | VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS_ENABLE_INVPCID | VMCS_SECONDARY_PROC_BASED_EXEC_CTRLS_ENABLE_XSAVES_XRSTORS,
 		MSR_VMX_PROCBASED_CTLS2
 	));
 
@@ -246,11 +248,10 @@ ULONG_PTR nrot_vmx_init(ULONG_PTR ctx) {
 	__vmx_vmwrite(VMCS_EPT_POINTER, ept->eptp.value);
 
 	__vmx_vmwrite(VMCS_HOST_RSP, ((ULONG64)currVmx->stack) + SIZE_VMX_STACK);
-	DbgPrint("[IWA] %u host rsp= %p - %p\n", KeGetCurrentProcessorNumberEx(NULL), currVmx->stack, ((ULONG64)currVmx->stack) + SIZE_VMX_STACK);
+	//DbgPrint("[IWA] %u host rsp= %p - %p\n", KeGetCurrentProcessorNumberEx(NULL), currVmx->stack, ((ULONG64)currVmx->stack) + SIZE_VMX_STACK);
 
 	__vmx_vmwrite(VMCS_HOST_RIP, root_asm_vmexit);
 
-	DbgPrint("[IWA] %u\n", KeGetCurrentProcessorNumberEx(NULL));
 	__debugbreak();
 	if (!nrot_asm_vmlaunch()) {
 		__vmx_vmread(VMCS_INSTRUCTION_ERROR, &err);
@@ -258,7 +259,7 @@ ULONG_PTR nrot_vmx_init(ULONG_PTR ctx) {
 		__vmx_off();
 		return 0;
 	}
-	DbgPrint("[IWA] %u\n", KeGetCurrentProcessorNumberEx(NULL));
+	//DbgPrint("[IWA] %u\n", KeGetCurrentProcessorNumberEx(NULL));
 	__debugbreak();
 
 	currVmx->isOn = 1;
