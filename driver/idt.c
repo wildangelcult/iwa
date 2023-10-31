@@ -1,5 +1,7 @@
 #include "hv.h"
 
+idt_entry_t *idt;
+
 #define GATETYPE_INTERRUPT_GATE	0xe
 
 void root_idt_nmiHandler() {

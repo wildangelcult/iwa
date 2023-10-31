@@ -5,11 +5,9 @@
 #include <ntddk.h>
 #include <intrin.h>
 
-#if 0
 NTKERNELAPI VOID KeGenericCallDpc(PKDEFERRED_ROUTINE Routine, PVOID Context);
 NTKERNELAPI VOID KeSignalCallDpcDone(PVOID SystemArgument1);
 NTKERNELAPI LOGICAL KeSignalCallDpcSynchronize(PVOID SystemArgument2);
-#endif
 
 #define POOL_TAG ((ULONG)(' AWI'))
 

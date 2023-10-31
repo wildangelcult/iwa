@@ -28,7 +28,7 @@ typedef union idt_addr_u {
 	};
 } idt_addr_t;
 
-idt_entry_t *idt;
+extern idt_entry_t *idt;
 
 BOOLEAN nrot_idt_init();
 

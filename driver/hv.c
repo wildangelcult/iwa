@@ -3,6 +3,7 @@
 BOOLEAN nrot_hv_init() {
 	PHYSICAL_ADDRESS maxPhys;
 	ULONG i, cpuN;
+	volatile ULONG currCpu;
 
 	maxPhys.QuadPart = MAXULONG64;
 
@@ -25,7 +26,8 @@ BOOLEAN nrot_hv_init() {
 	if (!(idt = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, POOL_TAG))) return FALSE;
 	if (!nrot_idt_init()) return FALSE;
 
-	KeIpiGenericCall(nrot_vmx_init, 0);
+	currCpu = 0;
+	KeIpiGenericCall(nrot_vmx_init, &currCpu);
 
 	return TRUE;
 }

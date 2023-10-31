@@ -182,7 +182,7 @@ typedef struct vmx_vmx_s {
 
 extern vmx_vmx_t *vmx;
 
-ULONG_PTR nrot_vmx_init(ULONG_PTR ctx);
+ULONG_PTR nrot_vmx_init(PULONG ctx);
 ULONG_PTR nrot_vmx_exit(ULONG_PTR ctx);
 
 #endif //__VMX_H

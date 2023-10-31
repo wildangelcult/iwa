@@ -1,7 +1,7 @@
 #include "hv.h"
 #include "util.h"
 
-#define DbgPrint
+//#define DbgPrint
 
 vmx_vmx_t *vmx;
 
@@ -104,15 +104,22 @@ static ULONG64 both_vmx_adjustCtrls(ULONG ctrls, ULONG msr) {
 	return ctrls;
 }
 
-ULONG_PTR nrot_vmx_init(ULONG_PTR ctx) {
+ULONG_PTR nrot_vmx_init(PULONG ctx) {
 	ULONG64 physVmxon, physVmcs, err;
+	ULONG currCpu;
 	vmx_vmx_t *currVmx;
 	msr_vmxBasic_t vmxBasic;
 	unsigned char status;
 	asm_descTable_t gdt, idtDesc;
 	vmx_segSel_t trSel;
 
-	currVmx = &vmx[KeGetCurrentProcessorNumberEx(NULL)];
+	currCpu = KeGetCurrentProcessorNumberEx(NULL);
+	DbgPrint("[IWA] *ctx= %u currCpu= %u\n", *ctx, currCpu);
+	while (InterlockedCompareExchange(ctx, currCpu, currCpu) != currCpu) {
+		;;
+	}
+
+	currVmx = &vmx[currCpu];
 
 	__writecr4(__readcr4() | (1 << 13));
 
@@ -248,7 +255,7 @@ ULONG_PTR nrot_vmx_init(ULONG_PTR ctx) {
 	__vmx_vmwrite(VMCS_EPT_POINTER, ept->eptp.value);
 
 	__vmx_vmwrite(VMCS_HOST_RSP, ((ULONG64)currVmx->stack) + SIZE_VMX_STACK);
-	//DbgPrint("[IWA] %u host rsp= %p - %p\n", KeGetCurrentProcessorNumberEx(NULL), currVmx->stack, ((ULONG64)currVmx->stack) + SIZE_VMX_STACK);
+	DbgPrint("[IWA] %u host rsp= %p - %p\n", KeGetCurrentProcessorNumberEx(NULL), currVmx->stack, ((ULONG64)currVmx->stack) + SIZE_VMX_STACK);
 
 	__vmx_vmwrite(VMCS_HOST_RIP, root_asm_vmexit);
 
@@ -259,12 +266,15 @@ ULONG_PTR nrot_vmx_init(ULONG_PTR ctx) {
 		__vmx_off();
 		return 0;
 	}
-	//DbgPrint("[IWA] %u\n", KeGetCurrentProcessorNumberEx(NULL));
+	DbgPrint("[IWA] %u\n", KeGetCurrentProcessorNumberEx(NULL));
 	__debugbreak();
 
 	currVmx->isOn = 1;
 
-	//DbgPrint("[IWA] " __FUNCTION__ "\n");
+	//should be everywhere where return but meh
+	InterlockedIncrement(ctx);
+
+	DbgPrint("[IWA] " __FUNCTION__ "\n");
 	return 0;
 }
 
