@@ -34,8 +34,10 @@ BOOLEAN nrot_hv_init() {
 
 void nrot_hv_exit() {
 	ULONG i, cpuN;
+	volatile ULONG currCpu;
 
-	KeIpiGenericCall(nrot_vmx_exit, 0);
+	currCpu = 0;
+	KeIpiGenericCall(nrot_vmx_exit, &currCpu);
 
 	if (ept) {
 		if (ept->pageTable) MmFreeContiguousMemory(ept->pageTable);

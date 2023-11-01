@@ -54,7 +54,7 @@ root_asm_idtNmiHandler PROC
 	pop r10
 	pop r9
 	pop r8
-	pop rbp 
+	pop rbp
 	pop rdi
 	pop rsi
 	pop rdx
@@ -89,6 +89,9 @@ root_asm_vmexit PROC
 	call root_vmx_vmexit
 	add rsp, 20h
 
+	test rax, rax
+	jz vmoff
+
 	pop rax
 	pop rcx
 	pop rdx
@@ -108,6 +111,54 @@ root_asm_vmexit PROC
 
 	vmresume
 	jmp eror_vmx_vmresumeError
+
+vmoff:
+	mov rax, 06820h		; VMCS_GUEST_RFLAGS
+	vmread rax, rax
+	push rax
+
+	mov rax, 0681Ch		; VMCS_GUEST_RSP
+	vmread rax, rax
+	push rax
+
+	mov rax, 0681Eh		; VMCS_GUEST_RIP
+	vmread rax, rax
+
+	vmxoff
+
+	mov rbx, [rsp + 88h]
+	mov rcx, [rsp]
+	mov [rsp + 88h], rcx
+	mov [rsp], rbx
+
+	mov rcx, rsp
+	mov rbx, [rsp + 88h]
+	mov rsp, rbx
+	push rax
+	mov rsp, rcx
+	sub rbx, 8
+	mov [rsp + 88h], rbx
+
+	pop r15
+	popfq
+	pop rax
+	pop rcx
+	pop rdx
+	pop rbx
+	pop rbp
+	pop rbp
+	pop rsi
+	pop rdi
+	pop r8
+	pop r9
+	pop r10
+	pop r11
+	pop r12
+	pop r13
+	pop r14
+
+	pop rsp
+	ret
 root_asm_vmexit ENDP
 
 both_asm_vmcall PROC
@@ -119,6 +170,11 @@ root_asm_invept PROC
 	invept rcx, oword ptr [rdx]
 	ret
 root_asm_invept ENDP
+
+both_asm_setGdt PROC
+	lgdt fword ptr [rcx]
+	ret
+both_asm_setGdt ENDP
 
 both_asm_getGdt PROC
 	sgdt fword ptr [rcx]
