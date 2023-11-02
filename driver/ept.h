@@ -9,6 +9,12 @@
 #define MEMTYPE_INV	0xFF
 
 #define EPT_PML_COUNT	512
+#define EPT_MAX_SPLIT	32
+
+#define EPT_PML4_INDEX(x)	(((x) & 0xFF8000000000ULL) >> 39)
+#define EPT_PML3_INDEX(x)	(((x) & 0x7FC0000000ULL) >> 30)
+#define EPT_PML2_INDEX(x)	(((x) & 0x3FE00000ULL) >> 21)
+#define EPT_PML1_INDEX(x)	(((x) & 0x1FF000ULL) >> 12)
 
 typedef union ept_pml_u {
 	ULONG64 value;
@@ -84,6 +90,7 @@ typedef union ept_eptp_u {
 
 typedef struct ept_ept_s {
 	ept_pageTable_t *pageTable;
+	void *split[EPT_MAX_SPLIT];
 	ept_eptp_t eptp;
 } ept_ept_t;
 

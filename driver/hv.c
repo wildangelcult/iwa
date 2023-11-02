@@ -1,6 +1,7 @@
 #include "hv.h"
 
-BOOLEAN nrot_hv_init() {
+BOOLEAN nrot_hv_init(PUINT8 imageBase) {
+	PIMAGE_NT_HEADERS nt;
 	PHYSICAL_ADDRESS maxPhys;
 	ULONG i, cpuN;
 	volatile ULONG currCpu;
@@ -11,6 +12,9 @@ BOOLEAN nrot_hv_init() {
 	if (!(ept = ExAllocatePoolWithTag(NonPagedPool, sizeof(ept_ept_t), POOL_TAG))) return FALSE;
 	if (!(ept->pageTable = MmAllocateContiguousMemory(sizeof(ept_pageTable_t), maxPhys))) return FALSE;
 	if (!nrot_ept_init()) return FALSE;
+
+	nt = (PIMAGE_NT_HEADERS)(imageBase + ((PIMAGE_DOS_HEADER)imageBase)->e_lfanew);
+	DbgPrint("[IWA] imageBase= %p BaseOfCode= %u SizeOfCode= %u\n", imageBase, nt->OptionalHeader.BaseOfCode, nt->OptionalHeader.SizeOfCode);
 
 	cpuN = KeQueryActiveProcessorCount(0);
 	if (!(vmx = ExAllocatePoolWithTag(NonPagedPool, sizeof(vmx_vmx_t) * cpuN, POOL_TAG))) return FALSE;

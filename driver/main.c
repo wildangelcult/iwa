@@ -131,7 +131,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) 
 
 	//imageBase = DriverObject->DriverStart;
 
-	if (!nrot_hv_init()) {
+	if (!nrot_hv_init(DriverObject->DriverStart)) {
 		nrot_DriverUnload(DriverObject);
 		return STATUS_UNSUCCESSFUL;
 	}

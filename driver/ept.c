@@ -87,5 +87,52 @@ BOOLEAN nrot_ept_init() {
 	ept->eptp.pageWalk = 3;
 	ept->eptp.pfn = both_util_getPhysical(pageTable->pml4) / PAGE_SIZE;
 
+	memset(ept->split, 0, sizeof(ept->split));
+
 	return TRUE;
+}
+
+BOOLEAN nrot_ept_swapPage(void *origPage, void *swapPage) {
+	ULONG64 origPhys, swapPhys;
+	ULONG i;
+	ept_pml2e_t *pml2;
+	ept_pml1e_t *pml1, defaultPml1;
+
+	origPhys = PAGE_ALIGN(both_util_getPhysical(origPage));
+	swapPhys = PAGE_ALIGN(both_util_getPhysical(swapPage));
+
+	pml2 = &ept->pageTable->pml2[EPT_PML3_INDEX(origPhys)][EPT_PML2_INDEX(origPhys)];
+
+	if (pml2->largePage) {
+		for (i = 0; i < EPT_MAX_SPLIT; ++i) {
+			if (!ept->split[i]) break;
+		}
+		if (!(pml1 = ept->split[i] = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, POOL_TAG))) return FALSE;
+
+		defaultPml1.value = 0;
+		defaultPml1.read = 1;
+		defaultPml1.write = 1;
+		defaultPml1.exec = 1;
+		__stosq((PULONG64)pml1, defaultPml1.value, EPT_PML_COUNT);
+
+		for (i = 0; i < EPT_PML_COUNT; ++i) {
+			pml1[i].pfn = pml2->pfn * EPT_PML_COUNT + i;
+		}
+
+		pml2->value = 0;
+		pml2->read = 1;
+		pml2->write = 1;
+		pml2->exec = 1;
+		pml2->pfn = both_util_getPhysical(pml1) / PAGE_SIZE;
+	}
+
+	return TRUE;
+}
+
+void nrot_ept_exit() {
+	ULONG i;
+
+	for (i = 0; i < EPT_MAX_SPLIT; ++i) {
+		if (ept->split[i]) ExFreePoolWithTag(ept->split[i], POOL_TAG);
+	}
 }
