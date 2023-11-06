@@ -259,7 +259,7 @@ ULONG_PTR nrot_vmx_init(PULONG ctx) {
 
 	__vmx_vmwrite(VMCS_HOST_RIP, root_asm_vmexit);
 
-	__debugbreak();
+	//__debugbreak();
 	if (!nrot_asm_vmlaunch()) {
 		__vmx_vmread(VMCS_INSTRUCTION_ERROR, &err);
 		DbgPrint("[IWA] vmlaunch failed %llu\n", err);
@@ -267,7 +267,7 @@ ULONG_PTR nrot_vmx_init(PULONG ctx) {
 		goto finish;
 	}
 	DbgPrint("[IWA] %u\n", KeGetCurrentProcessorNumberEx(NULL));
-	__debugbreak();
+	//__debugbreak();
 
 	currVmx->isOn = 1;
 
