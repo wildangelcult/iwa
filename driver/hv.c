@@ -21,8 +21,12 @@ BOOLEAN nrot_hv_init(PUINT8 imageBase) {
 	memset(vmx, 0, sizeof(vmx_vmx_t) * cpuN);
 
 	for (i = 0; i < cpuN; ++i) {
+#if 0
 		if (!(vmx[i].vmxon = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, POOL_TAG))) return FALSE;
 		if (!(vmx[i].vmcs = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, POOL_TAG))) return FALSE;
+#endif
+		if (!(vmx[i].vmxon = MmAllocateContiguousMemory(PAGE_SIZE, maxPhys))) return FALSE;
+		if (!(vmx[i].vmcs = MmAllocateContiguousMemory(PAGE_SIZE, maxPhys))) return FALSE;
 		if (!(vmx[i].stack = ExAllocatePoolWithTag(NonPagedPool, SIZE_VMX_STACK, POOL_TAG))) return FALSE;
 		if (!(vmx[i].msrBitmap = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, POOL_TAG))) return FALSE;
 	}
@@ -50,8 +54,13 @@ void nrot_hv_exit() {
 	if (vmx) {
 		cpuN = KeQueryActiveProcessorCount(0);
 		for (i = 0; i < cpuN; ++i) {
+#if 0
 			if (vmx[i].vmxon) ExFreePoolWithTag(vmx[i].vmxon, POOL_TAG);
 			if (vmx[i].vmcs) ExFreePoolWithTag(vmx[i].vmcs, POOL_TAG);
+#endif
+
+			if (vmx[i].vmxon) MmFreeContiguousMemory(vmx[i].vmxon);
+			if (vmx[i].vmcs) MmFreeContiguousMemory(vmx[i].vmcs);
 			if (vmx[i].stack) ExFreePoolWithTag(vmx[i].stack, POOL_TAG);
 			if (vmx[i].msrBitmap) ExFreePoolWithTag(vmx[i].msrBitmap, POOL_TAG);
 		}

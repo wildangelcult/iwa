@@ -142,6 +142,8 @@ ULONG_PTR nrot_vmx_init(PULONG ctx) {
 
 	physVmcs = both_util_getPhysical(currVmx->vmcs);
 
+	DbgPrint("[IWA] vmxon virt= %p phys= %p\n[IWA] vmcs  virt= %p phys= %p\n", currVmx->vmxon, physVmxon, currVmx->vmcs, physVmcs);
+
 	status = __vmx_vmclear(&physVmcs);
 	if (status) {
 		DbgPrint("[IWA] vmclear failed %u\n", status);
@@ -236,21 +238,24 @@ ULONG_PTR nrot_vmx_init(PULONG ctx) {
 	__vmx_vmwrite(VMCS_GUEST_SYSENTER_ESP, __readmsr(MSR_SYSENTER_ESP));
 	__vmx_vmwrite(VMCS_GUEST_SYSENTER_EIP, __readmsr(MSR_SYSENTER_EIP));
 
-	both_vmx_getSegDesc(gdt.base, SEGREG_TR, &trSel);
+	both_vmx_getSegDesc(gdt.base, both_asm_getTr(), &trSel);
 	__vmx_vmwrite(VMCS_HOST_TR_BASE, trSel.base);
 
 	__vmx_vmwrite(VMCS_HOST_FS_BASE, __readmsr(MSR_FS_BASE));
 	__vmx_vmwrite(VMCS_HOST_GS_BASE, __readmsr(MSR_GS_BASE));
 
 	__vmx_vmwrite(VMCS_HOST_GDTR_BASE, gdt.base);
-	//__vmx_vmwrite(VMCS_HOST_IDTR_BASE, idtDesc.base);
-	__vmx_vmwrite(VMCS_HOST_IDTR_BASE, idt);
+	__vmx_vmwrite(VMCS_HOST_IDTR_BASE, idtDesc.base);
+	//__vmx_vmwrite(VMCS_HOST_IDTR_BASE, idt);
 
 	__vmx_vmwrite(VMCS_HOST_SYSENTER_CS, __readmsr(MSR_SYSENTER_CS));
 	__vmx_vmwrite(VMCS_HOST_SYSENTER_ESP, __readmsr(MSR_SYSENTER_ESP));
 	__vmx_vmwrite(VMCS_HOST_SYSENTER_EIP, __readmsr(MSR_SYSENTER_EIP));
 
 	__vmx_vmwrite(VMCS_ADDRESS_OF_MSR_BITMAPS, both_util_getPhysical(currVmx->msrBitmap));
+
+	__vmx_vmwrite(VMCS_EXCEPTION_BITMAP, MAXULONG32);
+	__vmx_vmwrite(VMCS_PAGE_FAULT_ERROR_CODE_MATCH, MAXULONG32);
 
 	__vmx_vmwrite(VMCS_EPT_POINTER, ept->eptp.value);
 
@@ -322,6 +327,22 @@ ULONG64 root_vmx_vmexit(vmx_regCtx_t *ctx) {
 
 	switch (exitReason) {
 		case VMCS_EXIT_REASON_EXCEPTION_OR_NMI:
+			__vmx_vmread(VMCS_GUEST_RSP, (PULONG64)&gpr);
+			__vmx_vmread(VMCS_GUEST_RIP, &rip);
+
+			__vmx_vmread(VMCS_VMEXIT_INTERRUPTION_INFORMATION, &intInfo.value);
+			__vmx_vmread(VMCS_VMEXIT_INTERRUPTION_ERROR_CODE, &interrupt);
+
+			DbgPrint("[IWA] %u exception ctx= %p rsp= %p rip= %p\n", KeGetCurrentProcessorNumberEx(NULL), ctx, gpr, rip);
+			DbgPrint("[IWA] vector= %u intType= %u deliverErr= %u valid= %u error= %u\n", intInfo.vector, intInfo.interruptType, intInfo.deliverError, intInfo.valid, interrupt);
+
+			__vmx_vmwrite(VMCS_VMENTRY_INTERRUPTION_INFORMATION, intInfo.value);
+			__vmx_vmwrite(VMCS_VMENTRY_EXCEPTION_ERROR_CODE, interrupt);
+
+			//__debugbreak();
+
+			goto dontSkipInst;
+
 			__vmx_vmread(VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS, &primaryCtrls);
 			primaryCtrls |= VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_NMI_WINDOW_EXITING;
 			__vmx_vmwrite(VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_NMI_WINDOW_EXITING, primaryCtrls);
@@ -351,6 +372,11 @@ ULONG64 root_vmx_vmexit(vmx_regCtx_t *ctx) {
 			__writecr0(__readcr0() | (1ULL << 16));
 			__writecr3(hostCr3);
 			*/
+			ULONG64 hostCr3, guestCr3;
+			__vmx_vmread(VMCS_GUEST_CR3, &guestCr3);
+			hostCr3 = __readcr3();
+			DbgPrint("[IWA] cr3 host= %p guest= %p\n", hostCr3, guestCr3);
+			__debugbreak();
 
 			goto dontSkipInst;
 		case VMCS_EXIT_REASON_NMI_WINDOW:
@@ -517,7 +543,7 @@ ULONG64 root_vmx_vmexit(vmx_regCtx_t *ctx) {
 
 dontSkipInst:
 
-	//DbgPrint("[IWA] %u " __FUNCTION__ " %u\n", KeGetCurrentProcessorNumberEx(NULL), exitReason);
+	DbgPrint("[IWA] %u " __FUNCTION__ " %u\n", KeGetCurrentProcessorNumberEx(NULL), exitReason);
 
 	_fxrstor64(fxmem);
 	return result;
