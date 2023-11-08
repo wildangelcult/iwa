@@ -18,6 +18,8 @@ NTKERNELAPI LOGICAL KeSignalCallDpcSynchronize(PVOID SystemArgument2);
 #include "idt.h"
 #include "asm.h"
 
+#define __vmx_vmwrite(x,y) DbgPrint("[IWA] vmwrite %016X %p\n", (x), (y)); __vmx_vmwrite((x), (y));
+
 BOOLEAN nrot_hv_init(PUINT8 imageBase);
 void nrot_hv_exit();
 

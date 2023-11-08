@@ -70,7 +70,7 @@ static void both_vmx_getSegDesc(ULONG64 gdtBase, UINT16 sel, vmx_segSel_t *resul
 	result->limit = desc->limit0 | desc->limit1 << 16;
 	result->attr.value = desc->attr0 | desc->attr1 << 8;
 
-	if (!result->attr.p) {
+	if (!result->attr.s) {
 		tmp = (*(PULONG64)(((PUCHAR)desc) + 8));
 		result->base = (result->base & 0xffffffff) | tmp << 32;
 	}
@@ -254,8 +254,8 @@ ULONG_PTR nrot_vmx_init(PULONG ctx) {
 
 	__vmx_vmwrite(VMCS_ADDRESS_OF_MSR_BITMAPS, both_util_getPhysical(currVmx->msrBitmap));
 
-	__vmx_vmwrite(VMCS_EXCEPTION_BITMAP, MAXULONG32);
-	__vmx_vmwrite(VMCS_PAGE_FAULT_ERROR_CODE_MATCH, MAXULONG32);
+	//__vmx_vmwrite(VMCS_EXCEPTION_BITMAP, MAXULONG32);
+	//__vmx_vmwrite(VMCS_PAGE_FAULT_ERROR_CODE_MATCH, MAXULONG32);
 
 	__vmx_vmwrite(VMCS_EPT_POINTER, ept->eptp.value);
 
@@ -308,6 +308,8 @@ void root_vmx_invept() {
 	desc.reserved = 0;
 	root_asm_invept(EPT_INVEPT_SINGLE_CONTEXT, &desc);
 }
+
+#undef __vmx_vmwrite
 
 ULONG64 root_vmx_vmexit(vmx_regCtx_t *ctx) {
 	UINT8 fxmem[512];
