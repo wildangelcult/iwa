@@ -5,10 +5,18 @@ idt_entry_t *idt;
 #define GATETYPE_INTERRUPT_GATE	0xe
 
 void root_idt_nmiHandler() {
+#if 0
 	ULONG32 primaryCtrls;
 	__vmx_vmread(VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS, &primaryCtrls);
 	primaryCtrls |= VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_NMI_WINDOW_EXITING;
 	__vmx_vmwrite(VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_NMI_WINDOW_EXITING, primaryCtrls);
+#endif
+	vmcs_interruptionInformation_t intInfo;
+	intInfo.value = 0;
+	intInfo.interruptType = IDT_NMI;
+	intInfo.vector = EXCEPTION_NMI;
+	intInfo.valid = 1;
+	__vmx_vmwrite(VMCS_VMENTRY_INTERRUPTION_INFORMATION, intInfo.value);
 }
 
 BOOLEAN nrot_idt_init() {

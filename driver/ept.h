@@ -104,5 +104,7 @@ typedef struct ept_invept_s {
 extern ept_ept_t *ept;
 
 BOOLEAN nrot_ept_init();
+BOOLEAN nrot_ept_swapPage(void *origPage, void *swapPage);
+void nrot_ept_exit();
 
 #endif //__EPT_H
