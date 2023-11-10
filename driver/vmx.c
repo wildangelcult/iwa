@@ -303,6 +303,7 @@ ULONG64 root_vmx_vmexit(vmx_regCtx_t *ctx) {
 	ULONG64 rip, instLen, rflags, debugCtl, pendingDbg, *gpr, val64, result;
 	ULARGE_INTEGER msrValue;
 	ULONG32 exitReason, interrupt, primaryCtrls;
+	ULONG i;
 	INT32 cpuidData[4];
 	vmcs_exitQualCrAccess_t crAccessQual;
 	asm_descTable_t descTable;
@@ -511,8 +512,8 @@ ULONG64 root_vmx_vmexit(vmx_regCtx_t *ctx) {
 		case VMCS_EXIT_REASON_MONITOR_TRAP_FLAG:
 			goto dontSkipInst;
 		case VMCS_EXIT_REASON_EPT_VIOLATION:
-			DbgPrint("[IWA] what how?\n");
-			goto dontSkipInst; //or maybe we fucked
+			__vmx_vmread(
+			goto dontSkipInst;
 		case VMCS_EXIT_REASON_EPT_MISCONFIGURATION:
 			DbgPrint("[IWA] EPT is fucked\n");
 			break;

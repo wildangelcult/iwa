@@ -1,22 +1,36 @@
 #include <ntifs.h>
 #include "hv.h"
 
+hv_hook_t *hook = NULL;
+
 BOOLEAN nrot_hv_init(PUINT8 imageBase) {
 	PIMAGE_NT_HEADERS nt;
 	PHYSICAL_ADDRESS maxPhys;
 	ULONG i, cpuN;
+	void *hookAddr[HV_HOOK_MAX];
 
 	maxPhys.QuadPart = MAXULONG64;
 
-	//alloc
 	if (!(ept = ExAllocatePoolWithTag(NonPagedPool, sizeof(ept_ept_t), POOL_TAG))) return FALSE;
 	if (!(ept->pageTable = MmAllocateContiguousMemory(sizeof(ept_pageTable_t), maxPhys))) return FALSE;
 	if (!nrot_ept_init()) return FALSE;
 
+	if (!(hook = ExAllocatePoolWithTag(NonPagedPool, sizeof(hv_hook_t) * HV_HOOK_MAX, POOL_TAG))) return FALSE;
+	memset(hook, 0, sizeof(hv_hook_t) * HV_HOOK_MAX);
+
+	hookAddr[HV_HOOK_NTCREATEFILE] = NtCreateFile;
+	hookAddr[HV_HOOK_NTOPENFILE] = NtOpenFile;
+	hookAddr[HV_HOOK_NTOPENPROCESS] = NtOpenProcess;
+	hookAddr[HV_HOOK_NTCREATEKEY] = NULL; //48 83 EC 48 48 83 64 24 ? 00 48 8B 84 24 PAGE
+	hookAddr[HV_HOOK_CMOPENKEY] = NULL; //40 53 56 57 41 54 41 55 41 56 41 57 48 81 EC 20 02 00 00 48 8B 05 ? ? ? ? 48 33 C4 48 89 84 24 ? ? ? ? 45 8B F1 PAGE
+
+	if (!(hook[HV_HOOK_NTCREATEFILE].swapPage = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, POOL_TAG))) return FALSE;
+	memcpy(hook[HV_HOOK_NTCREATEFILE].swapPage, PAGE_ALIGN(hookAddr[HV_HOOK_NTCREATEFILE]), PAGE_SIZE);
+
+	if (!nrot_ept_swapPage(hookAddr[HV_HOOK_NTCREATEFILE], hook[HV_HOOK_NTCREATEFILE].swapPage, HV_HOOK_NTCREATEFILE)) return FALSE;
+
 	nt = (PIMAGE_NT_HEADERS)(imageBase + ((PIMAGE_DOS_HEADER)imageBase)->e_lfanew);
 	DbgPrint("[IWA] imageBase= %p BaseOfCode= %u SizeOfCode= %u\n", imageBase, nt->OptionalHeader.BaseOfCode, nt->OptionalHeader.SizeOfCode);
-
-	//if (!nrot_ept_swapPage(NtCreateFile, NtCreateFile)) return FALSE;
 
 	cpuN = KeQueryActiveProcessorCount(0);
 	if (!(vmx = ExAllocatePoolWithTag(NonPagedPool, sizeof(vmx_vmx_t) * cpuN, POOL_TAG))) return FALSE;
@@ -46,6 +60,13 @@ void nrot_hv_exit() {
 		if (ept->pageTable) MmFreeContiguousMemory(ept->pageTable);
 		nrot_ept_exit();
 		ExFreePoolWithTag(ept, POOL_TAG);
+	}
+	if (hook) {
+		if (hook[0].tramp) ExFreePoolWithTag(hook[0].tramp, POOL_TAG);
+		for (i = 0; i < HV_HOOK_MAX; ++i) {
+			if (hook[i].swapPage) ExFreePoolWithTag(hook[i].swapPage, POOL_TAG);
+		}
+		ExFreePoolWithTag(hook, POOL_TAG);
 	}
 	if (vmx) {
 		cpuN = KeQueryActiveProcessorCount(0);

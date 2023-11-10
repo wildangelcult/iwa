@@ -9,7 +9,6 @@
 #define MEMTYPE_INV	0xFF
 
 #define EPT_PML_COUNT	512
-#define EPT_MAX_SPLIT	32
 
 #define EPT_PML4_INDEX(x)	(((x) & 0xFF8000000000ULL) >> 39)
 #define EPT_PML3_INDEX(x)	(((x) & 0x7FC0000000ULL) >> 30)
@@ -88,9 +87,15 @@ typedef union ept_eptp_u {
 	};
 } ept_eptp_t;
 
+typedef struct ept_swap_s {
+	void *split;
+	ULONG64 origPhys;
+	ept_pml1e_t *pml1, origPml1, swapPml1;
+} ept_swap_t;
+
 typedef struct ept_ept_s {
 	ept_pageTable_t *pageTable;
-	void *split[EPT_MAX_SPLIT];
+	ept_swap_t swap[HV_HOOK_MAX];
 	ept_eptp_t eptp;
 } ept_ept_t;
 
@@ -104,7 +109,7 @@ typedef struct ept_invept_s {
 extern ept_ept_t *ept;
 
 BOOLEAN nrot_ept_init();
-BOOLEAN nrot_ept_swapPage(void *origPage, void *swapPage);
+BOOLEAN nrot_ept_swapPage(void *origPage, void *swapPage, ULONG currSwap);
 void nrot_ept_exit();
 
 #endif //__EPT_H
