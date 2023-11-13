@@ -92,7 +92,7 @@ BOOLEAN nrot_ept_init() {
 	return TRUE;
 }
 
-BOOLEAN nrot_ept_swapPage(void *origPage, void *swapPage, ULONG swapI) {
+BOOLEAN nrot_ept_swapPage(void *origPage, ULONG swapI) {
 	ULONG64 origPhys;
 	ULONG i;
 	ept_swap_t *currSwap;
@@ -131,13 +131,13 @@ BOOLEAN nrot_ept_swapPage(void *origPage, void *swapPage, ULONG swapI) {
 	pml1 = currSwap->pml1 = &((ept_pml1e_t*)both_util_getVirtual(((ept_pml_t*)pml2)->pfn * PAGE_SIZE))[EPT_PML1_INDEX(origPhys)];
 
 	currSwap->origPhys = origPhys;
-	currSwap->origPml1.value = currSwap->swapPml1.value = pml1->value;
+	currSwap->readPml1.value = currSwap->execPml1.value = pml1->value;
 
-	currSwap->swapPml1.read = 0;
-	currSwap->swapPml1.write = 0;
-	currSwap->swapPml1.pfn = both_util_getPhysical(PAGE_ALIGN(swapPage)) / PAGE_SIZE;
+	currSwap->execPml1.read = 0;
+	currSwap->execPml1.write = 0;
 
-	pml1->value = currSwap->swapPml1.value;
+	//currSwap->execPml1.pfn = both_util_getPhysical(PAGE_ALIGN(swapPage)) / PAGE_SIZE;
+	//pml1->value = currSwap->execPml1.value;
 
 	return TRUE;
 }
@@ -145,7 +145,7 @@ BOOLEAN nrot_ept_swapPage(void *origPage, void *swapPage, ULONG swapI) {
 void nrot_ept_exit() {
 	ULONG i;
 
-	for (i = 0; i < HV_HOOK_MAX; ++i) {
+	for (i = 0; i < EPT_SWAP_MAX; ++i) {
 		if (ept->swap[i].split) ExFreePoolWithTag(ept->swap[i].split, POOL_TAG);
 	}
 }

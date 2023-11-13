@@ -307,6 +307,7 @@ ULONG64 root_vmx_vmexit(vmx_regCtx_t *ctx) {
 	INT32 cpuidData[4];
 	vmcs_exitQualCrAccess_t crAccessQual;
 	asm_descTable_t descTable;
+	ept_swap_t *currSwap;
 
 	_fxsave64(fxmem);
 
@@ -510,9 +511,31 @@ ULONG64 root_vmx_vmexit(vmx_regCtx_t *ctx) {
 			}
 			break;
 		case VMCS_EXIT_REASON_MONITOR_TRAP_FLAG:
+			__vmx_vmread(VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS, &primaryCtrls);
+			primaryCtrls &= ~VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_MONITOR_TRAP_FLAG;
+			__vmx_vmwrite(VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS, primaryCtrls);
+
+			currSwap = vmx[KeGetCurrentProcessorNumberEx(NULL)].currSwap;
+			InterlockedExchange64(&currSwap->pml1->value, currSwap->execPml1.value);
+			root_vmx_invept();
+
 			goto dontSkipInst;
 		case VMCS_EXIT_REASON_EPT_VIOLATION:
-			__vmx_vmread(
+			__vmx_vmread(VMCS_GUEST_PHYSICAL_ADDRESS, &val64);
+			for (i = 0; i < EPT_SWAP_MAX; ++i) {
+				currSwap = &ept->swap[i];
+				if (currSwap->origPhys == PAGE_ALIGN(val64)) {
+					//currSwap->pml1->value = currSwap->readPml1.value;
+					InterlockedExchange64(&currSwap->pml1->value, currSwap->readPml1.value);
+					root_vmx_invept();
+
+					vmx[KeGetCurrentProcessorNumberEx(NULL)].currSwap = currSwap;
+					__vmx_vmread(VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS, &primaryCtrls);
+					primaryCtrls |= VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_MONITOR_TRAP_FLAG;
+					__vmx_vmwrite(VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS, primaryCtrls);
+					break;
+				}
+			}
 			goto dontSkipInst;
 		case VMCS_EXIT_REASON_EPT_MISCONFIGURATION:
 			DbgPrint("[IWA] EPT is fucked\n");

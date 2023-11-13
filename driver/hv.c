@@ -1,5 +1,6 @@
 #include <ntifs.h>
 #include "hv.h"
+#include "util.h"
 
 hv_hook_t *hook = NULL;
 
@@ -27,7 +28,9 @@ BOOLEAN nrot_hv_init(PUINT8 imageBase) {
 	if (!(hook[HV_HOOK_NTCREATEFILE].swapPage = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, POOL_TAG))) return FALSE;
 	memcpy(hook[HV_HOOK_NTCREATEFILE].swapPage, PAGE_ALIGN(hookAddr[HV_HOOK_NTCREATEFILE]), PAGE_SIZE);
 
-	if (!nrot_ept_swapPage(hookAddr[HV_HOOK_NTCREATEFILE], hook[HV_HOOK_NTCREATEFILE].swapPage, HV_HOOK_NTCREATEFILE)) return FALSE;
+	if (!nrot_ept_swapPage(hookAddr[HV_HOOK_NTCREATEFILE], HV_HOOK_NTCREATEFILE)) return FALSE;
+	ept->swap[HV_HOOK_NTCREATEFILE].execPml1.pfn = both_util_getPhysical(PAGE_ALIGN(hook[HV_HOOK_NTCREATEFILE].swapPage)) / PAGE_SIZE;
+	ept->swap[HV_HOOK_NTCREATEFILE].pml1->value = ept->swap[HV_HOOK_NTCREATEFILE].execPml1.value;
 
 	nt = (PIMAGE_NT_HEADERS)(imageBase + ((PIMAGE_DOS_HEADER)imageBase)->e_lfanew);
 	DbgPrint("[IWA] imageBase= %p BaseOfCode= %u SizeOfCode= %u\n", imageBase, nt->OptionalHeader.BaseOfCode, nt->OptionalHeader.SizeOfCode);

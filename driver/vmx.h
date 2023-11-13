@@ -15,6 +15,7 @@
 #define VMCS_PIN_BASED_VIRTUAL_NMIS									(1 << 5)
 
 #define VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_NMI_WINDOW_EXITING		(1 << 22)
+#define VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_MONITOR_TRAP_FLAG		(1 << 27)
 #define VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_USE_MSR_BITMAPS			(1 << 28)
 #define VMCS_PRIMARY_PROC_BASED_EXEC_CTRLS_ACTIVATE_SECONDARY_CTRLS	(1 << 31)
 
@@ -90,6 +91,7 @@
 #define VMCS_ADDRESS_OF_MSR_BITMAPS									0x2004
 #define VMCS_TSC_OFFSET												0x2010
 #define VMCS_EPT_POINTER											0x201A
+#define VMCS_GUEST_PHYSICAL_ADDRESS									0x2400
 #define VMCS_VMCS_LINK_POINTER										0x2800
 #define VMCS_GUEST_DEBUGCTL											0x2802
 #define VMCS_PIN_BASED_EXEC_CTRLS									0x4000
@@ -182,6 +184,7 @@ typedef struct vmx_vmx_s {
 	void *vmcs;
 	void *stack;
 	void *msrBitmap;
+	ept_swap_t *currSwap;
 } vmx_vmx_t;
 
 extern vmx_vmx_t *vmx;
