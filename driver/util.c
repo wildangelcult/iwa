@@ -70,7 +70,7 @@ void both_util_getSect(PVOID modBase, const char *sectName, PVOID *sectBase, PUL
 	}
 }
 
-void* both_util_sigInRange(PVOID modBase, ULONG size, const char *patt) {
+void* both_util_sigInRange(PVOID base, ULONG size, const char *patt) {
 	PUINT8 start, end, begin;
 	BOOLEAN skip;
 	const char *currPatt;
@@ -79,7 +79,7 @@ void* both_util_sigInRange(PVOID modBase, ULONG size, const char *patt) {
 #define getHalf(x) (range(x, '0', '9') ? (x - '0') : ((x - 'A') + 0xA))
 #define getByte(x) ((UINT8)(getHalf(x[0]) << 4 | getHalf(x[1])))
 
-	start = modBase;
+	start = base;
 	end = start + size;
 
 	currPatt = patt;

@@ -157,6 +157,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ept.c" />
+    <ClCompile Include="hde\hde64.c" />
     <ClCompile Include="hv.c" />
     <ClCompile Include="idt.c" />
     <ClCompile Include="main.c" />
@@ -167,6 +168,9 @@
     <ClInclude Include="..\shared.h" />
     <ClInclude Include="asm.h" />
     <ClInclude Include="ept.h" />
+    <ClInclude Include="hde\hde64.h" />
+    <ClInclude Include="hde\stdint.h" />
+    <ClInclude Include="hde\table64.h" />
     <ClInclude Include="hv.h" />
     <ClInclude Include="idt.h" />
     <ClInclude Include="msr.h" />

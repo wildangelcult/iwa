@@ -17,6 +17,6 @@ inline ULONG64 both_util_getPhysical(PVOID addr) {
 
 void* nrot_util_getModBase(const char *name);
 void both_util_getSect(PVOID modBase, const char *sectName, PVOID *sectBase, PULONG sectSize);
-void* both_util_sigInRange(PVOID modBase, ULONG size, const char *patt);
+void* both_util_sigInRange(PVOID base, ULONG size, const char *patt);
 
 #endif //__UTIL_H

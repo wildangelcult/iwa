@@ -23,13 +23,6 @@ typedef enum hv_hookType_e {
 	HV_HOOK_MAX
 } hv_hookType_t;
 
-typedef struct hv_hook_s {
-	void *tramp;
-	void *swapPage;
-} hv_hook_t;
-
-extern hv_hook_t *hook;
-
 #include "msr.h"
 #include "ept.h"
 #include "vmx.h"

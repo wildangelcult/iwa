@@ -1,14 +1,29 @@
 #include <ntifs.h>
 #include "hv.h"
 #include "util.h"
+#include "hde/hde64.h"
+
+typedef struct hv_hook_s {
+	void *tramp;
+	void *swapPage;
+} hv_hook_t;
 
 hv_hook_t *hook = NULL;
+
+const UINT8 jmpWithReg[] = {0x48, 0xb8, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0xff, 0xe0};
+const UINT8 jmpNoReg[] = {0xFF, 0x25, 0x00, 0x00, 0x00, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88};
 
 BOOLEAN nrot_hv_init(PUINT8 imageBase) {
 	PIMAGE_NT_HEADERS nt;
 	PHYSICAL_ADDRESS maxPhys;
-	ULONG i, cpuN;
-	void *hookAddr[HV_HOOK_MAX];
+	PVOID sectBase;
+	ULONG i, cpuN, sectSize, totalLen;
+	PUINT8 ptr;
+	hde64s hs;
+	struct {
+		void *addr;
+		unsigned int instLen;
+	} hookAddr[HV_HOOK_MAX];
 
 	maxPhys.QuadPart = MAXULONG64;
 
@@ -19,18 +34,35 @@ BOOLEAN nrot_hv_init(PUINT8 imageBase) {
 	if (!(hook = ExAllocatePoolWithTag(NonPagedPool, sizeof(hv_hook_t) * HV_HOOK_MAX, POOL_TAG))) return FALSE;
 	memset(hook, 0, sizeof(hv_hook_t) * HV_HOOK_MAX);
 
-	hookAddr[HV_HOOK_NTCREATEFILE] = NtCreateFile;
-	hookAddr[HV_HOOK_NTOPENFILE] = NtOpenFile;
-	hookAddr[HV_HOOK_NTOPENPROCESS] = NtOpenProcess;
-	hookAddr[HV_HOOK_NTCREATEKEY] = NULL; //48 83 EC 48 48 83 64 24 ? 00 48 8B 84 24 PAGE
-	hookAddr[HV_HOOK_CMOPENKEY] = NULL; //40 53 56 57 41 54 41 55 41 56 41 57 48 81 EC 20 02 00 00 48 8B 05 ? ? ? ? 48 33 C4 48 89 84 24 ? ? ? ? 45 8B F1 PAGE
+	both_util_getSect(nrot_util_getModBase("ntoskrnl.exe"), "PAGE", &sectBase, &sectSize);
 
-	if (!(hook[HV_HOOK_NTCREATEFILE].swapPage = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, POOL_TAG))) return FALSE;
-	memcpy(hook[HV_HOOK_NTCREATEFILE].swapPage, PAGE_ALIGN(hookAddr[HV_HOOK_NTCREATEFILE]), PAGE_SIZE);
+	hookAddr[HV_HOOK_NTCREATEFILE].addr = NtCreateFile;
+	hookAddr[HV_HOOK_NTOPENFILE].addr = NtOpenFile;
+	hookAddr[HV_HOOK_NTOPENPROCESS].addr = NtOpenProcess;
+	hookAddr[HV_HOOK_NTCREATEKEY].addr = both_util_sigInRange(sectBase, sectSize, "48 83 EC 48 48 83 64 24 ? 00 48 8B 84 24");
+	hookAddr[HV_HOOK_CMOPENKEY].addr = both_util_sigInRange(sectBase, sectSize, "40 53 56 57 41 54 41 55 41 56 41 57 48 81 EC 20 02 00 00 48 8B 05 ? ? ? ? 48 33 C4 48 89 84 24 ? ? ? ? 45 8B F1");
 
-	if (!nrot_ept_swapPage(hookAddr[HV_HOOK_NTCREATEFILE], HV_HOOK_NTCREATEFILE)) return FALSE;
-	ept->swap[HV_HOOK_NTCREATEFILE].execPml1.pfn = both_util_getPhysical(PAGE_ALIGN(hook[HV_HOOK_NTCREATEFILE].swapPage)) / PAGE_SIZE;
-	ept->swap[HV_HOOK_NTCREATEFILE].pml1->value = ept->swap[HV_HOOK_NTCREATEFILE].execPml1.value;
+	for (i = 0, totalLen = 0; i < HV_HOOK_MAX; ++i) {
+		hookAddr[i].instLen = 0;
+		while (hookAddr[i].instLen < sizeof(jmpWithReg)) {
+			hookAddr[i].instLen += hde64_disasm(((PUINT8)hookAddr[i].addr) + hookAddr[i].instLen, &hs);
+		}
+		totalLen += hookAddr[i].instLen;
+	}
+	
+	if (!(ptr = hook[0].tramp = ExAllocatePoolWithTag(NonPagedPool, totalLen + sizeof(jmpNoReg) * HV_HOOK_MAX, POOL_TAG))) return FALSE;
+
+	for (i = 0; i < HV_HOOK_MAX; ++i) {
+		if (!(hook[i].swapPage = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, POOL_TAG))) return FALSE;
+		memcpy(hook[i].swapPage, PAGE_ALIGN(hookAddr[i].addr), PAGE_SIZE);
+
+		//TODO: hook fun
+		memcpy ptr 
+	
+		if (!nrot_ept_swapPage(hookAddr[i].addr, i)) return FALSE;
+		ept->swap[i].execPml1.pfn = both_util_getPhysical(PAGE_ALIGN(hook[i].swapPage)) / PAGE_SIZE;
+		ept->swap[i].pml1->value = ept->swap[i].execPml1.value;
+	}
 
 	nt = (PIMAGE_NT_HEADERS)(imageBase + ((PIMAGE_DOS_HEADER)imageBase)->e_lfanew);
 	DbgPrint("[IWA] imageBase= %p BaseOfCode= %u SizeOfCode= %u\n", imageBase, nt->OptionalHeader.BaseOfCode, nt->OptionalHeader.SizeOfCode);
