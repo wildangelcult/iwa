@@ -267,7 +267,6 @@ ULONG_PTR nrot_vmx_init(ULONG_PTR ctx) {
 
 	currVmx->isOn = 1;
 
-
 	//DbgPrint("[IWA] " __FUNCTION__ "\n");
 	return 0;
 }
@@ -416,27 +415,25 @@ ULONG64 root_vmx_vmexit(vmx_regCtx_t *ctx) {
 		case VMCS_EXIT_REASON_VMCALL:
 			__vmx_vmread(VMCS_GUEST_RIP, &rip);
 			if (rip == both_asm_vmcall) {
-				//DbgPrint("[IWA] vmxoff\n");
-
 				__vmx_vmread(VMCS_GUEST_CR3, &val64);
 				__writecr3(val64);
-
+	
 				__vmx_vmread(VMCS_GUEST_FS_BASE, &val64);
 				__writemsr(MSR_FS_BASE, val64);
-
+	
 				__vmx_vmread(VMCS_GUEST_GS_BASE, &val64);
 				__writemsr(MSR_GS_BASE, val64);
-
+	
 				__vmx_vmread(VMCS_GUEST_GDTR_BASE, &descTable.base);
 				__vmx_vmread(VMCS_GUEST_GDTR_LIMIT, &val64);
 				descTable.limit = (UINT16)val64;
 				both_asm_setGdt(&descTable);
-
+	
 				__vmx_vmread(VMCS_GUEST_IDTR_BASE, &descTable.base);
 				__vmx_vmread(VMCS_GUEST_IDTR_LIMIT, &val64);
 				descTable.limit = (UINT16)val64;
 				__lidt(&descTable);
-
+	
 				result = 0;
 			} else {
 				ctx->rax = both_asm_vmcall(ctx->rcx, ctx->rdx, ctx->r8);
