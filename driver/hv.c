@@ -3,6 +3,8 @@
 #include "util.h"
 #include "hde/hde64.h"
 
+#define MAX_PATH 260
+
 typedef struct hv_hook_s {
 	void *tramp;
 	void *swapPage;
@@ -15,6 +17,37 @@ void *zeroPage;
 const UINT8 jmpWithReg[] = {0x48, 0xb8, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0xff, 0xe0};
 const UINT8 jmpNoReg[] = {0xFF, 0x25, 0x00, 0x00, 0x00, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88};
 
+WCHAR protFileIwa[] = L"\\Windows\\System32\\drivers\\iwa.sys";
+#define PROTFILEIWA_LEN	(sizeof(protFileIwa) - sizeof(WCHAR))
+
+static USHORT nrot_hv_getFullPath(POBJECT_ATTRIBUTES oa, PWCHAR buf, SIZE_T len) {
+	PVOID ob, ptr;
+	ULONG retLen;
+	USHORT dirLen;
+	UNICODE_STRING str;
+	str.Buffer = buf;
+	str.Length = 0;
+	str.MaximumLength = len;
+
+	if (oa->RootDirectory) {
+		if (NT_SUCCESS(ObReferenceObjectByHandle(oa->RootDirectory, 0, NULL, KernelMode, &ob, NULL))) {
+			if (NT_SUCCESS(ObQueryNameString(ob, buf, len, &retLen))) {
+				ptr = ((POBJECT_NAME_INFORMATION)buf)->Name.Buffer;
+				dirLen = ((POBJECT_NAME_INFORMATION)buf)->Name.Length;
+				memcpy(buf, ptr, dirLen);
+				buf[dirLen / sizeof(WCHAR)] = L'\\';
+				str.Length = dirLen + sizeof(WCHAR);
+			}
+			ObDereferenceObject(ob);
+		}
+	}
+
+	if (oa->ObjectName) {
+		RtlAppendUnicodeStringToString(&str, oa->ObjectName);
+	}
+
+	return str.Length;
+}
 
 typedef NTSTATUS (*NtCreateFile_t)(
 	PHANDLE FileHandle,
@@ -43,7 +76,32 @@ NTSTATUS nrot_hv_NtCreateFile(
 	PVOID EaBuffer,
 	ULONG EaLength
 ) {
-	DbgPrint("[IWA] NtCreateFile\n");
+	WCHAR buf[MAX_PATH];
+	UNICODE_STRING oaStr, protStr;
+
+	protStr.Buffer = protFileIwa;
+	protStr.MaximumLength = protStr.Length = PROTFILEIWA_LEN;
+
+	oaStr.Length = nrot_hv_getFullPath(ObjectAttributes, buf, MAX_PATH);
+	oaStr.MaximumLength = MAX_PATH;
+
+
+	if (oaStr.Length >= protStr.Length) {
+		oaStr.Buffer = ((PUINT8)buf) + (oaStr.Length - protStr.Length);
+		oaStr.Length = protStr.Length;
+		if (RtlEqualUnicodeString(&oaStr, &protStr, TRUE)) {
+			DbgPrint("[IWA] %wZ\n", oaStr);
+			IoStatusBlock->Status = STATUS_ACCESS_DENIED;
+			IoStatusBlock->Information = FILE_EXISTS;
+			return STATUS_ACCESS_DENIED;
+		}
+		/*
+		if (!RtlCompareUnicodeStrings(protFileIwa, PROTFILEIWA_LEN, ((PUINT8)buf) + (len - PROTFILEIWA_LEN), PROTFILEIWA_LEN, TRUE)) {
+			DbgPrint("[IWA] %wZ\n", *ObjectAttributes->ObjectName);
+		}
+		*/
+	}
+
 	return ((NtCreateFile_t)hook[HV_HOOK_NTCREATEFILE].tramp)(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
 }
 
