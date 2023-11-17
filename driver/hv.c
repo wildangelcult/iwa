@@ -12,41 +12,80 @@ typedef struct hv_hook_s {
 
 hv_hook_t *hook = NULL;
 
-void *zeroPage;
+void *randomPage;
+both_asm_vmcall_t both_asm_vmcall = NULL;
 
 const UINT8 jmpWithReg[] = {0x48, 0xb8, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0xff, 0xe0};
 const UINT8 jmpNoReg[] = {0xFF, 0x25, 0x00, 0x00, 0x00, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88};
 
-WCHAR protFileIwa[] = L"\\Windows\\System32\\drivers\\iwa.sys";
-#define PROTFILEIWA_LEN	(sizeof(protFileIwa) - sizeof(WCHAR))
+//WCHAR protFileIwa[] = L"\\Windows\\System32\\drivers\\iwa.sys";
 
-static USHORT nrot_hv_getFullPath(POBJECT_ATTRIBUTES oa, PWCHAR buf, SIZE_T len) {
+#define PROTFILE_MAX 2
+UNICODE_STRING protFile[PROTFILE_MAX];
+#define PROTREG_MAX 8
+UNICODE_STRING protReg[PROTREG_MAX];
+
+extern ULONG32 shouldProtect;
+extern HANDLE protPidClient;
+extern HANDLE protPidCmd;
+
+static inline void nrot_hv_getFullPath(POBJECT_ATTRIBUTES oa, PUNICODE_STRING str) {
 	PVOID ob, ptr;
 	ULONG retLen;
 	USHORT dirLen;
-	UNICODE_STRING str;
-	str.Buffer = buf;
-	str.Length = 0;
-	str.MaximumLength = len;
+
+	str->Length = 0;
 
 	if (oa->RootDirectory) {
 		if (NT_SUCCESS(ObReferenceObjectByHandle(oa->RootDirectory, 0, NULL, KernelMode, &ob, NULL))) {
-			if (NT_SUCCESS(ObQueryNameString(ob, buf, len, &retLen))) {
-				ptr = ((POBJECT_NAME_INFORMATION)buf)->Name.Buffer;
-				dirLen = ((POBJECT_NAME_INFORMATION)buf)->Name.Length;
-				memcpy(buf, ptr, dirLen);
-				buf[dirLen / sizeof(WCHAR)] = L'\\';
-				str.Length = dirLen + sizeof(WCHAR);
+			if (NT_SUCCESS(ObQueryNameString(ob, str->Buffer, str->MaximumLength, &retLen))) {
+				ptr = ((POBJECT_NAME_INFORMATION)str->Buffer)->Name.Buffer;
+				dirLen = ((POBJECT_NAME_INFORMATION)str->Buffer)->Name.Length;
+				memcpy(str->Buffer, ptr, dirLen);
+				str->Buffer[dirLen / sizeof(WCHAR)] = L'\\';
+				str->Length = dirLen + sizeof(WCHAR);
 			}
 			ObDereferenceObject(ob);
 		}
 	}
 
 	if (oa->ObjectName) {
-		RtlAppendUnicodeStringToString(&str, oa->ObjectName);
+		RtlAppendUnicodeStringToString(str, oa->ObjectName);
 	}
+}
 
-	return str.Length;
+static BOOLEAN nrot_hv_handleOa(POBJECT_ATTRIBUTES oa, PUNICODE_STRING prot, ULONG protN) {
+	ULONG i;
+	WCHAR buf[MAX_PATH];
+	UNICODE_STRING oaStr, str;
+
+	if (!shouldProtect) return FALSE;
+
+	oaStr.Buffer = buf;
+	oaStr.MaximumLength = sizeof(buf);
+	nrot_hv_getFullPath(oa, &oaStr);
+
+	for (i = 0; i < protN; ++i) {
+		if (oaStr.Length >= prot[i].Length) {
+			str.Buffer = ((PUINT8)oaStr.Buffer) + (oaStr.Length - prot[i].Length);
+			str.MaximumLength = str.Length = prot[i].Length;
+			if (RtlEqualUnicodeString(&str, &prot[i], TRUE)) {
+				DbgPrint("[IWA] %wZ\n", str);
+				return TRUE;
+			}
+		}
+	}
+	return FALSE;
+}
+
+static BOOLEAN nrot_hv_handleFile(POBJECT_ATTRIBUTES oa, PIO_STATUS_BLOCK io) {
+	if (nrot_hv_handleOa(oa, protFile, PROTFILE_MAX)) {
+		io->Status = STATUS_ACCESS_DENIED;
+		io->Information = FILE_EXISTS;
+		return TRUE;
+	} else {
+		return FALSE;
+	}
 }
 
 typedef NTSTATUS (*NtCreateFile_t)(
@@ -76,33 +115,11 @@ NTSTATUS nrot_hv_NtCreateFile(
 	PVOID EaBuffer,
 	ULONG EaLength
 ) {
-	WCHAR buf[MAX_PATH];
-	UNICODE_STRING oaStr, protStr;
-
-	protStr.Buffer = protFileIwa;
-	protStr.MaximumLength = protStr.Length = PROTFILEIWA_LEN;
-
-	oaStr.Length = nrot_hv_getFullPath(ObjectAttributes, buf, MAX_PATH);
-	oaStr.MaximumLength = MAX_PATH;
-
-
-	if (oaStr.Length >= protStr.Length) {
-		oaStr.Buffer = ((PUINT8)buf) + (oaStr.Length - protStr.Length);
-		oaStr.Length = protStr.Length;
-		if (RtlEqualUnicodeString(&oaStr, &protStr, TRUE)) {
-			DbgPrint("[IWA] %wZ\n", oaStr);
-			IoStatusBlock->Status = STATUS_ACCESS_DENIED;
-			IoStatusBlock->Information = FILE_EXISTS;
-			return STATUS_ACCESS_DENIED;
-		}
-		/*
-		if (!RtlCompareUnicodeStrings(protFileIwa, PROTFILEIWA_LEN, ((PUINT8)buf) + (len - PROTFILEIWA_LEN), PROTFILEIWA_LEN, TRUE)) {
-			DbgPrint("[IWA] %wZ\n", *ObjectAttributes->ObjectName);
-		}
-		*/
+	if (nrot_hv_handleFile(ObjectAttributes, IoStatusBlock)) {
+		return STATUS_ACCESS_DENIED;
+	} else {
+		return ((NtCreateFile_t)hook[HV_HOOK_NTCREATEFILE].tramp)(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
 	}
-
-	return ((NtCreateFile_t)hook[HV_HOOK_NTCREATEFILE].tramp)(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
 }
 
 
@@ -123,7 +140,11 @@ NTSTATUS nrot_hv_NtOpenFile(
 	ULONG ShareAccess,
 	ULONG OpenOptions
 ) {
-	return ((NtOpenFile_t)hook[HV_HOOK_NTOPENFILE].tramp)(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, ShareAccess, OpenOptions);
+	if (nrot_hv_handleFile(ObjectAttributes, IoStatusBlock)) {
+		return STATUS_ACCESS_DENIED;
+	} else {
+		return ((NtOpenFile_t)hook[HV_HOOK_NTOPENFILE].tramp)(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, ShareAccess, OpenOptions);
+	}
 }
 
 typedef NTSTATUS (*NtOpenProcess_t)(
@@ -139,7 +160,11 @@ NTSTATUS nrot_hv_NtOpenProcess(
 	POBJECT_ATTRIBUTES ObjectAttributes,
 	PCLIENT_ID ClientId
 ) {
-	return ((NtOpenProcess_t)hook[HV_HOOK_NTOPENPROCESS].tramp)(ProcessHandle, DesiredAccess, ObjectAttributes, ClientId);
+	if (shouldProtect && (ClientId->UniqueProcess == protPidClient || ClientId->UniqueProcess == protPidCmd)) {
+		return STATUS_ACCESS_DENIED;
+	} else {
+		return ((NtOpenProcess_t)hook[HV_HOOK_NTOPENPROCESS].tramp)(ProcessHandle, DesiredAccess, ObjectAttributes, ClientId);
+	}
 }
 
 typedef NTSTATUS (*NtCreateKey_t)(
@@ -161,7 +186,11 @@ NTSTATUS nrot_hv_NtCreateKey(
 	ULONG CreateOptions,
 	PULONG Disposition
 ) {
-	return ((NtCreateKey_t)hook[HV_HOOK_NTCREATEKEY].tramp)(KeyHandle, DesiredAccess, ObjectAttributes, TitleIndex, Class, CreateOptions, Disposition);
+	if (nrot_hv_handleOa(ObjectAttributes, protReg, PROTREG_MAX)) {
+		return STATUS_ACCESS_DENIED;
+	} else {
+		return ((NtCreateKey_t)hook[HV_HOOK_NTCREATEKEY].tramp)(KeyHandle, DesiredAccess, ObjectAttributes, TitleIndex, Class, CreateOptions, Disposition);
+	}
 }
 
 typedef NTSTATUS (*CmOpenKey_t)(
@@ -179,7 +208,11 @@ NTSTATUS nrot_hv_CmOpenKey(
 	ULONG OpenOptions,
 	ULONG64 unknown
 ) {
-	return ((CmOpenKey_t)hook[HV_HOOK_CMOPENKEY].tramp)(KeyHandle, DesiredAccess, ObjectAttributes, OpenOptions, unknown);
+	if (nrot_hv_handleOa(ObjectAttributes, protReg, PROTREG_MAX)) {
+		return STATUS_ACCESS_DENIED;
+	} else {
+		return ((CmOpenKey_t)hook[HV_HOOK_CMOPENKEY].tramp)(KeyHandle, DesiredAccess, ObjectAttributes, OpenOptions, unknown);
+	}
 }
 
 BOOLEAN nrot_hv_init(PUINT8 imageBase) {
@@ -203,6 +236,18 @@ BOOLEAN nrot_hv_init(PUINT8 imageBase) {
 
 	if (!(hook = ExAllocatePoolWithTag(NonPagedPool, sizeof(hv_hook_t) * HV_HOOK_MAX, POOL_TAG))) return FALSE;
 	memset(hook, 0, sizeof(hv_hook_t) * HV_HOOK_MAX);
+
+	RtlInitUnicodeString(&protFile[0], L"\\Windows\\System32\\drivers\\iwa.sys");
+	RtlInitUnicodeString(&protFile[1], L"\\Windows\\System32\\iwa.exe");
+
+	RtlInitUnicodeString(&protReg[0], L"\\REGISTRY\\MACHINE\\SYSTEM\\ControlSet001\\Services\\iwa");
+	RtlInitUnicodeString(&protReg[1], L"\\REGISTRY\\MACHINE\\SYSTEM\\ControlSet001\\Services\\iwaclient");
+	RtlInitUnicodeString(&protReg[2], L"\\REGISTRY\\MACHINE\\SYSTEM\\ControlSet002\\Services\\iwa");
+	RtlInitUnicodeString(&protReg[3], L"\\REGISTRY\\MACHINE\\SYSTEM\\ControlSet002\\Services\\iwaclient");
+	RtlInitUnicodeString(&protReg[4], L"\\REGISTRY\\MACHINE\\SYSTEM\\CurrentControlSet\\Services\\iwa");
+	RtlInitUnicodeString(&protReg[5], L"\\REGISTRY\\MACHINE\\SYSTEM\\CurrentControlSet\\Services\\iwaclient");
+	RtlInitUnicodeString(&protReg[6], L"\\REGISTRY\\MACHINE\\SYSTEM\\Clone\\Services\\iwa");
+	RtlInitUnicodeString(&protReg[7], L"\\REGISTRY\\MACHINE\\SYSTEM\\Clone\\Services\\iwaclient");
 
 	both_util_getSect(nrot_util_getModBase("ntoskrnl.exe"), "PAGE", &sectBase, &sectSize);
 
@@ -268,11 +313,29 @@ BOOLEAN nrot_hv_init(PUINT8 imageBase) {
 		ept->swap[i].pml1->value = ept->swap[i].execPml1.value;
 	}
 
-	if (!(zeroPage = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, POOL_TAG))) return FALSE;
-	memset(zeroPage, 0, PAGE_SIZE);
 
 	nt = (PIMAGE_NT_HEADERS)(imageBase + ((PIMAGE_DOS_HEADER)imageBase)->e_lfanew);
 	DbgPrint("[IWA] imageBase= %p BaseOfCode= %u SizeOfCode= %u\n", imageBase, nt->OptionalHeader.BaseOfCode, nt->OptionalHeader.SizeOfCode);
+
+	if (!(randomPage = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, POOL_TAG))) return FALSE;
+	memcpy(randomPage, imageBase + nt->OptionalHeader.BaseOfCode, PAGE_SIZE);
+	
+	if (!(both_asm_vmcall = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, POOL_TAG))) return FALSE;
+	*((PULONG32)both_asm_vmcall) = 0xc3c1010f;
+
+	if (!nrot_ept_swapPage(both_asm_vmcall, HV_HOOK_MAX)) return FALSE;
+	ept->swap[HV_HOOK_MAX].readPml1.pfn = both_util_getPhysical(randomPage) / PAGE_SIZE;
+
+	/*
+	ptr = imageBase + nt->OptionalHeader.BaseOfCode;
+	end = ptr + nt->OptionalHeader.SizeOfCode;
+	pfn = both_util_getPhysical(zeroPage) / PAGE_SIZE;
+	ptr = PAGE_ALIGN(ptr);
+	for (i = HV_HOOK_MAX; ptr < end; ptr += PAGE_SIZE, ++i) {
+		if (!nrot_ept_swapPage(ptr, i)) return FALSE;
+		ept->swap[i].readPml1.pfn = pfn;
+	}
+	*/
 
 	cpuN = KeQueryActiveProcessorCount(0);
 	if (!(vmx = ExAllocatePoolWithTag(NonPagedPool, sizeof(vmx_vmx_t) * cpuN, POOL_TAG))) return FALSE;
@@ -303,7 +366,8 @@ void nrot_hv_exit() {
 		nrot_ept_exit();
 		ExFreePoolWithTag(ept, POOL_TAG);
 	}
-	if (zeroPage) ExFreePoolWithTag(zeroPage, POOL_TAG);
+	if (randomPage) ExFreePoolWithTag(randomPage, POOL_TAG);
+	if (both_asm_vmcall) ExFreePoolWithTag(both_asm_vmcall, POOL_TAG);
 	if (hook) {
 		if (hook[0].tramp) ExFreePoolWithTag(hook[0].tramp, POOL_TAG);
 		for (i = 0; i < HV_HOOK_MAX; ++i) {

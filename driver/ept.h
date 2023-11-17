@@ -9,7 +9,7 @@
 #define MEMTYPE_INV	0xFF
 
 #define EPT_PML_COUNT	512
-#define EPT_SWAP_MAX	(HV_HOOK_MAX + 16)
+#define EPT_SWAP_MAX	(HV_HOOK_MAX + 1)
 
 #define EPT_PML4_INDEX(x)	(((x) & 0xFF8000000000ULL) >> 39)
 #define EPT_PML3_INDEX(x)	(((x) & 0x7FC0000000ULL) >> 30)

@@ -161,10 +161,10 @@ vmoff:
 	ret
 root_asm_vmexit ENDP
 
-both_asm_vmcall PROC
-	vmcall
-	ret
-both_asm_vmcall ENDP
+;both_asm_vmcall PROC
+;	vmcall
+;	ret
+;both_asm_vmcall ENDP
 
 root_asm_invept PROC
 	invept rcx, oword ptr [rdx]

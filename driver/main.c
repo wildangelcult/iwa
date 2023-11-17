@@ -10,10 +10,12 @@
 #define INVALID_HANDLE_VALUE ((HANDLE)(-1))
 #endif
 
-BOOLEAN shouldProtect = TRUE;
+ULONG32 shouldProtect = TRUE;
 
 static DWORD32 ipAddr = 0;
-HANDLE clientPid = INVALID_HANDLE_VALUE;
+
+HANDLE protPidClient = INVALID_HANDLE_VALUE;
+HANDLE protPidCmd = INVALID_HANDLE_VALUE;
 
 NTKERNELAPI HANDLE PsGetCurrentProcessId();
 
@@ -22,9 +24,9 @@ NTSTATUS nrot_mjr_create(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 	DbgPrint("[IWA] " __FUNCTION__ "\n");
 	DbgPrint("[IWA] %p\n", PsGetCurrentProcessId());
 
-	if (clientPid == INVALID_HANDLE_VALUE) {
-		clientPid = PsGetCurrentProcessId();
-	} else if (clientPid != PsGetCurrentProcessId()) {
+	if (protPidClient == INVALID_HANDLE_VALUE) {
+		protPidClient = PsGetCurrentProcessId();
+	} else if (protPidClient != PsGetCurrentProcessId()) {
 		status = STATUS_ACCESS_DENIED;
 	}
 
@@ -42,10 +44,22 @@ NTSTATUS nrot_mjr_ioctl(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
 	stack = IoGetCurrentIrpStackLocation(Irp);
 
+	DbgPrint("[IWA] %u %u %p\n", stack->Parameters.DeviceIoControl.IoControlCode, stack->Parameters.DeviceIoControl.InputBufferLength, Irp->AssociatedIrp.SystemBuffer);
+
 	switch (stack->Parameters.DeviceIoControl.IoControlCode) {
 		case IOCTL_PROTECT_PID:
+			if (stack->Parameters.DeviceIoControl.InputBufferLength == sizeof(HANDLE) && Irp->AssociatedIrp.SystemBuffer) {
+				protPidCmd = *((PHANDLE)Irp->AssociatedIrp.SystemBuffer);
+			} else {
+				status = STATUS_INVALID_PARAMETER;
+			}
 			break;
 		case IOCTL_SET_PROTECT_STATE:
+			if (stack->Parameters.DeviceIoControl.InputBufferLength == sizeof(ULONG32) && Irp->AssociatedIrp.SystemBuffer) {
+				shouldProtect = *((PULONG32)Irp->AssociatedIrp.SystemBuffer);
+			} else {
+				status = STATUS_INVALID_PARAMETER;
+			}
 			break;
 		default:
 			status = STATUS_INVALID_PARAMETER;

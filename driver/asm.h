@@ -12,7 +12,9 @@ ULONG64 nrot_asm_vmlaunch();
 void root_asm_idtNmiHandler();
 void root_asm_vmexit();
 
-ULONG64 both_asm_vmcall(ULONG64 param1, ULONG64 param2, ULONG64 param3);
+//ULONG64 both_asm_vmcall(ULONG64 param1, ULONG64 param2, ULONG64 param3);
+typedef ULONG64 (*both_asm_vmcall_t)(ULONG64 param1, ULONG64 param2, ULONG64 param3);
+extern both_asm_vmcall_t both_asm_vmcall;
 
 void root_asm_invept(ULONG64 type, ept_invept_t *desc);
 

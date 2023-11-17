@@ -137,7 +137,8 @@ BOOLEAN nrot_ept_swapPage(void *origPage, ULONG swapI) {
 	currSwap->execPml1.write = 0;
 
 	//currSwap->execPml1.pfn = both_util_getPhysical(PAGE_ALIGN(swapPage)) / PAGE_SIZE;
-	//pml1->value = currSwap->execPml1.value;
+
+	pml1->value = currSwap->execPml1.value;
 
 	return TRUE;
 }

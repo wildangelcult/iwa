@@ -34,7 +34,7 @@ void svc_init() {
 void svc_main(DWORD dwNumServicesArgs, LPSTR *lpServiceArgVectors) {
 	FILE *fw;
 	SC_HANDLE driverSvc;
-	HANDLE driver;
+	HANDLE driver, cmdPid;
 	DWORD32 serverIp = 0;
 	DWORD regSize = sizeof(DWORD32);
 
@@ -53,9 +53,11 @@ void svc_main(DWORD dwNumServicesArgs, LPSTR *lpServiceArgVectors) {
 	driverSvc = OpenService(OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS), "iwa", SERVICE_START);
 	if (!StartService(driverSvc, 0, NULL)) {
 		fprintf(fw, "StartService %u\n", GetLastError());
+		/*
 		fclose(fw);
 		svc_stop(1);
 		return;
+		*/
 	}
 	CloseServiceHandle(driverSvc);
 
@@ -66,11 +68,15 @@ void svc_main(DWORD dwNumServicesArgs, LPSTR *lpServiceArgVectors) {
 		svc_stop(1);
 		return;
 	}
-	if (!DeviceIoControl(driver, IOCTL_PROTECT_PID, NULL, 0, NULL, 0, NULL, NULL)) {
+	cmdPid = INVALID_HANDLE_VALUE;
+	if (!DeviceIoControl(driver, IOCTL_PROTECT_PID, &cmdPid, sizeof(HANDLE), NULL, 0, NULL, NULL)) {
 		fprintf(fw, "DeviceIoControl %u\n", GetLastError());
 		fclose(fw);
 		svc_stop(1);
 		return;
+	}
+
+	for (;;) {
 	}
 
 	CloseHandle(driver);
