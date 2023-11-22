@@ -66,6 +66,8 @@ NTSTATUS nrot_mjr_ioctl(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 			break;
 	}
 
+	DbgPrint("[IWA] shouldProtect= %u\n", shouldProtect);
+
 	Irp->IoStatus.Status = status;
 	Irp->IoStatus.Information = 0;
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);

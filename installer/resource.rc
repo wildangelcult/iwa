@@ -26,6 +26,8 @@ LANGUAGE LANG_NEUTRAL, SUBLANG_NEUTRAL
 
 IDR_CLIENT              RCDATA                  "..\\x64\\Release\\client.exe"
 
+IDR_STUB                RCDATA                  "..\\x64\\Release\\stub.exe"
+
 IDR_DRIVER              RCDATA                  "..\\x64\\Release\\driver.sys"
 
 #endif    // Neutral resources

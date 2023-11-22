@@ -4,7 +4,8 @@
 //
 #define IDD_INPUT                       9
 #define IDR_CLIENT                      101
-#define IDR_DRIVER                      102
+#define IDR_STUB                        102
+#define IDR_DRIVER                      103
 #define IDC_IPADDRESS                   1003
 
 // Next default values for new objects

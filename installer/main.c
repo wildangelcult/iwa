@@ -8,6 +8,7 @@
 
 DWORD addr = 0;
 const char clientPath[] = "\\iwa.exe";
+const char stubPath[] = "\\iwastub.exe";
 const char driverPath[] = "\\drivers\\iwa.sys";
 
 INT_PTR ipInput(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -34,9 +35,9 @@ void fail() {
 
 //int main(int argc, char* argv[]) {
 int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) {
-	HRSRC clientRes, driverRes;
-	uint8_t *client, *driver;
-	DWORD clientSize, driverSize;
+	HRSRC clientRes, stubRes, driverRes;
+	uint8_t *client, *stub, *driver;
+	DWORD clientSize, stubSize, driverSize;
 	TOKEN_ELEVATION el;
 	HANDLE token = NULL, file;
 	SC_HANDLE scMan, service;
@@ -63,15 +64,18 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
 
 
 	clientRes = FindResource(NULL, MAKEINTRESOURCE(IDR_CLIENT), RT_RCDATA);
+	stubRes = FindResource(NULL, MAKEINTRESOURCE(IDR_STUB), RT_RCDATA);
 	driverRes = FindResource(NULL, MAKEINTRESOURCE(IDR_DRIVER), RT_RCDATA);
 
 	client = LockResource(LoadResource(NULL, clientRes));
+	stub = LockResource(LoadResource(NULL, stubRes));
 	driver = LockResource(LoadResource(NULL, driverRes));
 
 	clientSize = SizeofResource(NULL, clientRes);
+	stubSize = SizeofResource(NULL, stubRes);
 	driverSize = SizeofResource(NULL, driverRes);
 
-	printf("%u %u\n", clientSize, driverSize);
+	printf("%u %u %u\n", clientSize, stubSize, driverSize);
 
 	if (!(systemSize = GetSystemDirectory(buf, sizeof(buf)))) {
 		fail();
@@ -85,6 +89,19 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
 		return 1;
 	}
 	if (!WriteFile(file, client, clientSize, NULL, NULL)) {
+		CloseHandle(file);
+		fail();
+		return 1;
+	}
+	CloseHandle(file);
+
+	memcpy(buf + systemSize, stubPath, sizeof(stubPath));
+	printf("%s\n", buf);
+	if ((file = CreateFile(buf, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL)) == INVALID_HANDLE_VALUE) {
+		fail();
+		return 1;
+	}
+	if (!WriteFile(file, stub, stubSize, NULL, NULL)) {
 		CloseHandle(file);
 		fail();
 		return 1;
@@ -127,7 +144,7 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
 	}
 	CloseServiceHandle(service);
 	
-	memcpy(buf + systemSize, clientPath, sizeof(clientPath));
+	memcpy(buf + systemSize, stubPath, sizeof(stubPath));
 	if (!(service = CreateService(scMan,
 				      "iwaclient",
 				      "Indestructible Wild Angel - client",

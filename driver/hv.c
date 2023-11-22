@@ -20,7 +20,7 @@ const UINT8 jmpNoReg[] = {0xFF, 0x25, 0x00, 0x00, 0x00, 0x00, 0x11, 0x22, 0x33, 
 
 //WCHAR protFileIwa[] = L"\\Windows\\System32\\drivers\\iwa.sys";
 
-#define PROTFILE_MAX 2
+#define PROTFILE_MAX 3
 UNICODE_STRING protFile[PROTFILE_MAX];
 #define PROTREG_MAX 8
 UNICODE_STRING protReg[PROTREG_MAX];
@@ -239,6 +239,7 @@ BOOLEAN nrot_hv_init(PUINT8 imageBase) {
 
 	RtlInitUnicodeString(&protFile[0], L"\\Windows\\System32\\drivers\\iwa.sys");
 	RtlInitUnicodeString(&protFile[1], L"\\Windows\\System32\\iwa.exe");
+	RtlInitUnicodeString(&protFile[2], L"\\Windows\\System32\\iwastub.exe");
 
 	RtlInitUnicodeString(&protReg[0], L"\\REGISTRY\\MACHINE\\SYSTEM\\ControlSet001\\Services\\iwa");
 	RtlInitUnicodeString(&protReg[1], L"\\REGISTRY\\MACHINE\\SYSTEM\\ControlSet001\\Services\\iwaclient");
@@ -360,6 +361,11 @@ void nrot_hv_exit() {
 	ULONG i, cpuN;
 
 	KeIpiGenericCall(nrot_vmx_exit, 0);
+
+	//wait for the hooks to finish executing
+	for (i = 0; i < (PAGE_SIZE * 2); ++i) {
+		_mm_pause();
+	}
 
 	if (ept) {
 		if (ept->pageTable) MmFreeContiguousMemory(ept->pageTable);

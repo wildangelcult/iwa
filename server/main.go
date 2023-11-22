@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/tls"
-	"fmt"
 	"log"
 	"net"
 	"unsafe"
@@ -11,17 +10,21 @@ import (
 )
 
 type client struct {
-	addr string
-	buf  []byte
 	show bool
+	addr string
+	log  string
+	cmd  string
 }
 
 var cl []client
 
-var buf string
+var globalCmd string
+var cmdLog string
 var showDemo bool
 
 func loop() {
+	imgui.DockSpaceOverViewportV(imgui.MainViewport(), imgui.DockNodeFlagsPassthruCentralNode, imgui.NewWindowClass())
+
 	if showDemo {
 		imgui.PlotShowDemoWindowV(&showDemo)
 	}
@@ -35,6 +38,15 @@ func loop() {
 		imgui.Checkbox(cl[i].addr, &cl[i].show)
 	}
 
+	imgui.Separator()
+
+	if imgui.InputTextWithHint("##globalInput", "global cmd", &globalCmd, imgui.InputTextFlagsEnterReturnsTrue|imgui.InputTextFlagsEscapeClearsAll, nil) {
+		if globalCmd != "" {
+			globalCmd = ""
+			//for range cl { push to chan }
+		}
+	}
+
 	imgui.End()
 
 	for i := 0; i < len(cl); i++ {
@@ -45,17 +57,22 @@ func loop() {
 			if imgui.BeginTabBar("##tabbar") {
 				if imgui.BeginTabItem("cmd") {
 					imgui.PushItemWidth(-1.0)
-					if imgui.InputTextWithHint("##input", "", &buf, 0, nil) {
-						fmt.Println("stuf")
-					}
 
-					imgui.BeginChildStr("text")
-					for j := 0; j < 1000; j++ {
-						imgui.Text("asd\nasdas\npp\nssssssssssssss\n")
+					imgui.BeginChildStrV("text", imgui.NewVec2(0, -(imgui.CurrentStyle().ItemSpacing().Y+imgui.FrameHeightWithSpacing())), false, imgui.WindowFlagsHorizontalScrollbar)
+					imgui.TextUnformatted(cl[i].log)
+					if imgui.ScrollY() >= imgui.ScrollMaxY() {
+						imgui.SetScrollHereYV(1.0)
 					}
 					imgui.EndChild()
 
-					//TODO: use exampleappconsole as an example
+					imgui.Separator()
+					if imgui.InputTextWithHint("##input", "", &cl[i].cmd, imgui.InputTextFlagsEnterReturnsTrue|imgui.InputTextFlagsEscapeClearsAll, nil) {
+						if cl[i].cmd != "" {
+							//push to channel instead
+							cl[i].log += cl[i].cmd + "\n"
+							cl[i].cmd = ""
+						}
+					}
 
 					imgui.PopItemWidth()
 					imgui.EndTabItem()
@@ -71,6 +88,8 @@ func loop() {
 			imgui.End()
 		}
 	}
+
+	//fmt.Println(imgui.CurrentIO().Framerate())
 }
 
 func tlsAccept(sv net.Listener) {

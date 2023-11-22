@@ -8,6 +8,7 @@ pushd "%systemroot%\system32"
 echo @echo off > deleteIWA.bat
 echo del %systemroot%\system32\drivers\iwa.sys >> deleteIWA.bat
 echo del %systemroot%\system32\iwa.exe >> deleteIWA.bat
+echo del %systemroot%\system32\iwastub.exe >> deleteIWA.bat
 echo del %systemroot%\system32\iwa.log >> deleteIWA.bat
 echo (goto) 2^>nul ^& del "%CD%\deleteIWA.bat" >> deleteIWA.bat
 
