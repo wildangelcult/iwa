@@ -14,20 +14,25 @@ import (
 )
 
 type client struct {
-	show    bool
-	addr    string
-	log     string
-	cmd     string
-	cpu     float32
-	send    chan []byte
-	recvLog chan []byte
-	recvCpu chan float32
+	show       bool
+	addr       string
+	log        string
+	cmd        string
+	cpu        float32
+	prot       bool
+	plotOffset int32
+	plotX      []float32
+	plotY      []float32
+	send       chan []byte
+	recvLog    chan []byte
+	recvCpu    chan float32
 }
 
 var cl []client
 
 var appendClient chan client
-var globalCmd string
+var selectedCmd string
+var sumDt float32
 
 var showDemo bool
 
@@ -35,7 +40,7 @@ func remove(slice []client, s int) []client {
 	return append(slice[:s], slice[s+1:]...)
 }
 
-func strToPacket(cmd string) []byte {
+func strToCmdPacket(cmd string) []byte {
 	cmd += "\n"
 	size := make([]byte, 2)
 	binary.BigEndian.PutUint16(size, uint16(len(cmd)))
@@ -58,24 +63,32 @@ func loop() {
 	imgui.SetNextWindowSizeV(imgui.NewVec2(300, 300), imgui.CondOnce)
 	imgui.BeginV("PCs", nil, 0)
 
+	imgui.BeginChildStrV("boxes", imgui.NewVec2(0, -(imgui.CurrentStyle().ItemSpacing().Y+imgui.FrameHeightWithSpacing())), false, imgui.WindowFlagsHorizontalScrollbar)
+
 	imgui.Checkbox("show demo", &showDemo)
 
 	for i := range cl {
 		imgui.Checkbox(cl[i].addr, &cl[i].show)
 	}
 
+	imgui.EndChild()
+
 	imgui.Separator()
 
-	if imgui.InputTextWithHint("##globalInput", "global cmd", &globalCmd, imgui.InputTextFlagsEnterReturnsTrue|imgui.InputTextFlagsEscapeClearsAll, nil) {
-		if globalCmd != "" {
-			packet := strToPacket(globalCmd)
+	imgui.PushItemWidth(-1.0)
+	if imgui.InputTextWithHint("##selectInput", "send to selected", &selectedCmd, imgui.InputTextFlagsEnterReturnsTrue|imgui.InputTextFlagsEscapeClearsAll, nil) {
+		if selectedCmd != "" {
+			packet := strToCmdPacket(selectedCmd)
 			for i := range cl {
-				cl[i].send <- packet
+				if cl[i].show {
+					cl[i].send <- packet
+				}
 			}
-			globalCmd = ""
+			selectedCmd = ""
 		}
 	}
 
+	imgui.PopItemWidth()
 	imgui.End()
 
 	for i := 0; i < len(cl); i++ {
@@ -98,6 +111,12 @@ func loop() {
 		default:
 		}
 
+		sumDt += imgui.CurrentIO().DeltaTime()
+		cl[i].plotX[cl[i].plotOffset] = sumDt
+		cl[i].plotY[cl[i].plotOffset] = cl[i].cpu
+
+		cl[i].plotOffset = (cl[i].plotOffset + 1) % int32(len(cl[i].plotX))
+
 		if cl[i].show {
 			imgui.SetNextWindowSizeV(imgui.NewVec2(300, 300), imgui.CondOnce)
 			imgui.BeginV(cl[i].addr, &cl[i].show, 0)
@@ -116,7 +135,7 @@ func loop() {
 					imgui.Separator()
 					if imgui.InputTextWithHint("##input", "", &cl[i].cmd, imgui.InputTextFlagsEnterReturnsTrue|imgui.InputTextFlagsEscapeClearsAll, nil) {
 						if cl[i].cmd != "" {
-							cl[i].send <- strToPacket(cl[i].cmd)
+							cl[i].send <- strToCmdPacket(cl[i].cmd)
 							cl[i].cmd = ""
 						}
 					}
@@ -126,6 +145,27 @@ func loop() {
 				}
 
 				if imgui.BeginTabItem("misc") {
+					if imgui.PlotBeginPlotV("CPU", imgui.NewVec2(-1, -1), 0) {
+						imgui.PlotSetupAxesV("", "", imgui.PlotAxisFlagsNoTickLabels, 0)
+						imgui.PlotSetupAxisLimitsV(imgui.AxisX1, float64(sumDt-10), float64(sumDt), imgui.CondAlways)
+						imgui.PlotSetupAxisLimitsV(imgui.AxisY1, 0, 100, imgui.CondAlways)
+						imgui.PlotPlotLineFloatPtrFloatPtrV("##CPU", cl[i].plotX, cl[i].plotY, int32(len(cl[i].plotX)), 0, cl[i].plotOffset, 4)
+						imgui.PlotSetNextFillStyleV(imgui.NewVec4(0, 0, 0, -1), 0.5)
+						imgui.PlotPlotShadedFloatPtrFloatPtrIntV("##CPU", cl[i].plotX, cl[i].plotY, int32(len(cl[i].plotX)), 0, 0, cl[i].plotOffset, 4)
+						imgui.PlotEndPlot()
+					}
+
+					imgui.Separator()
+
+					if imgui.Checkbox("Protected?", &cl[i].prot) {
+						var b byte
+						if cl[i].prot {
+							b = 1
+						} else {
+							b = 0
+						}
+						cl[i].send <- []byte{2, b}
+					}
 					imgui.EndTabItem()
 				}
 
@@ -214,6 +254,9 @@ func tlsAccept(sv net.Listener) {
 
 		c := client{
 			addr:    conn.RemoteAddr().String(),
+			prot:    true,
+			plotX:   make([]float32, 2000),
+			plotY:   make([]float32, 2000),
 			send:    make(chan []byte, 16),
 			recvLog: make(chan []byte, 16),
 			recvCpu: make(chan float32, 16),
