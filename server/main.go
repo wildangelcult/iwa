@@ -2,15 +2,17 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/tls"
 	"encoding/binary"
+	"fmt"
 	"io"
-	"log"
 	"math"
 	"net"
 	"unsafe"
 
 	imgui "github.com/AllenDang/cimgui-go"
+	"golang.org/x/text/encoding/charmap"
 )
 
 type client struct {
@@ -23,18 +25,19 @@ type client struct {
 	plotOffset int32
 	plotX      []float32
 	plotY      []float32
+	conn       net.Conn
 	send       chan []byte
 	recvLog    chan []byte
 	recvCpu    chan float32
 }
+
+var backend imgui.Backend[imgui.GLFWWindowFlags]
 
 var cl []client
 
 var appendClient chan client
 var selectedCmd string
 var sumDt float32
-
-var showDemo bool
 
 func remove(slice []client, s int) []client {
 	return append(slice[:s], slice[s+1:]...)
@@ -56,16 +59,12 @@ func loop() {
 
 	imgui.DockSpaceOverViewportV(imgui.MainViewport(), imgui.DockNodeFlagsPassthruCentralNode, imgui.NewWindowClass())
 
-	if showDemo {
-		imgui.PlotShowDemoWindowV(&showDemo)
-	}
+	//imgui.PlotShowDemoWindowV(&showDemo)
 
 	imgui.SetNextWindowSizeV(imgui.NewVec2(300, 300), imgui.CondOnce)
 	imgui.BeginV("PCs", nil, 0)
 
 	imgui.BeginChildStrV("boxes", imgui.NewVec2(0, -(imgui.CurrentStyle().ItemSpacing().Y+imgui.FrameHeightWithSpacing())), false, imgui.WindowFlagsHorizontalScrollbar)
-
-	imgui.Checkbox("show demo", &showDemo)
 
 	for i := range cl {
 		imgui.Checkbox(cl[i].addr, &cl[i].show)
@@ -93,9 +92,13 @@ func loop() {
 
 	for i := 0; i < len(cl); i++ {
 		select {
-		case l, ok := <-cl[i].recvLog:
+		case v, ok := <-cl[i].recvLog:
 			if ok {
-				cl[i].log += string(l)
+				dec := charmap.CodePage852
+				l, err := io.ReadAll(dec.NewDecoder().Reader(bytes.NewReader(v)))
+				if err == nil {
+					cl[i].log += string(l)
+				}
 			} else {
 				close(cl[i].send)
 				cl = remove(cl, i)
@@ -112,6 +115,7 @@ func loop() {
 		}
 
 		sumDt += imgui.CurrentIO().DeltaTime()
+
 		cl[i].plotX[cl[i].plotOffset] = sumDt
 		cl[i].plotY[cl[i].plotOffset] = cl[i].cpu
 
@@ -147,7 +151,7 @@ func loop() {
 				if imgui.BeginTabItem("misc") {
 					if imgui.PlotBeginPlotV("CPU", imgui.NewVec2(-1, -1), 0) {
 						imgui.PlotSetupAxesV("", "", imgui.PlotAxisFlagsNoTickLabels, 0)
-						imgui.PlotSetupAxisLimitsV(imgui.AxisX1, float64(sumDt-10), float64(sumDt), imgui.CondAlways)
+						imgui.PlotSetupAxisLimitsV(imgui.AxisX1, float64(sumDt-30), float64(sumDt), imgui.CondAlways)
 						imgui.PlotSetupAxisLimitsV(imgui.AxisY1, 0, 100, imgui.CondAlways)
 						imgui.PlotPlotLineFloatPtrFloatPtrV("##CPU", cl[i].plotX, cl[i].plotY, int32(len(cl[i].plotX)), 0, cl[i].plotOffset, 4)
 						imgui.PlotSetNextFillStyleV(imgui.NewVec4(0, 0, 0, -1), 0.5)
@@ -176,7 +180,10 @@ func loop() {
 		}
 	}
 
+	backend.Refresh()
+
 	//fmt.Println(imgui.CurrentIO().Framerate())
+	//fmt.Println(imgui.CurrentIO().DeltaTime())
 }
 
 func handleSendConn(conn net.Conn, send chan []byte) {
@@ -200,8 +207,6 @@ func handleRecvConn(conn net.Conn, recvLog chan []byte, recvCpu chan float32) {
 
 	r := bufio.NewReader(conn)
 	for {
-		var s uint16
-
 		t, err := r.ReadByte()
 		if err != nil {
 			return
@@ -215,7 +220,7 @@ func handleRecvConn(conn net.Conn, recvLog chan []byte, recvCpu chan float32) {
 			if err != nil {
 				return
 			}
-			s = uint16(b) << 8
+			s := uint16(b) << 8
 
 			b, err = r.ReadByte()
 			if err != nil {
@@ -248,15 +253,16 @@ func tlsAccept(sv net.Listener) {
 	for {
 		conn, err := sv.Accept()
 		if err != nil {
-			log.Println(err)
+			fmt.Println(err)
 			continue
 		}
 
 		c := client{
 			addr:    conn.RemoteAddr().String(),
 			prot:    true,
-			plotX:   make([]float32, 2000),
-			plotY:   make([]float32, 2000),
+			plotX:   make([]float32, 500),
+			plotY:   make([]float32, 500),
+			conn:    conn,
 			send:    make(chan []byte, 16),
 			recvLog: make(chan []byte, 16),
 			recvCpu: make(chan float32, 16),
@@ -273,19 +279,19 @@ var glyphRanges = [3]imgui.Wchar{0x20, 0xFFFF, 0x0}
 func main() {
 	cer, err := tls.LoadX509KeyPair("cer/server.crt", "cer/server.key")
 	if err != nil {
-		log.Println(err)
+		fmt.Println(err)
 		return
 	}
 
 	sv, err := tls.Listen("tcp", ":1337", &tls.Config{Certificates: []tls.Certificate{cer}})
 	if err != nil {
-		log.Println(err)
+		fmt.Println(err)
 		return
 	}
 	go tlsAccept(sv)
 
 	//var backend imgui.Backend[imgui.GLFWWindowFlags]
-	backend := imgui.CreateBackend(imgui.NewGLFWBackend())
+	backend = imgui.CreateBackend(imgui.NewGLFWBackend())
 	backend.SetAfterCreateContextHook(afterCreateContextHook)
 	backend.SetBeforeDestroyContextHook(beforeDestroyContextHook)
 
@@ -302,6 +308,10 @@ func main() {
 	//cl = []client{{addr: "127.0.0.1:54"}, {addr: "654654654"}, {addr: "555555"}}
 
 	backend.Run(loop)
+
+	for i := range cl {
+		cl[i].conn.Close()
+	}
 }
 
 func afterCreateContextHook() {

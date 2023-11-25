@@ -23,5 +23,8 @@
     <ClInclude Include="..\shared.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="cute_tls.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
