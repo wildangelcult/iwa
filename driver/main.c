@@ -6,10 +6,6 @@
 #include "../shared.h"
 #include "hv.h"
 
-#ifndef INVALID_HANDLE_VALUE
-#define INVALID_HANDLE_VALUE ((HANDLE)(-1))
-#endif
-
 ULONG32 shouldProtect = TRUE;
 
 static DWORD32 ipAddr = 0;

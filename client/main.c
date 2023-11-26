@@ -146,7 +146,6 @@ int main(int argc, char *argv[]) {
 	}
 
 	snprintf(serverHostname, sizeof(serverHostname), "%u.%u.%u.%u", serverIp >> 24, (serverIp >> 16) & 0xFF, (serverIp >> 8) & 0xFF, serverIp & 0xFF);
-	fprintf(fw, "%s\n", serverHostname);
 
 	buf = malloc(MAX_BUF);
 
@@ -155,11 +154,8 @@ int main(int argc, char *argv[]) {
 	timeElapsed = 0.0;
 
 	for (;;) {
-		fprintf(fw, "up top\n");
-		fflush(fw);
 		conn = tls_connect(serverHostname, 1337);
 		if (!conn.id) {
-			fprintf(fw, "no conn id\n");
 			Sleep(10000);
 			continue;
 		}
@@ -167,13 +163,10 @@ int main(int argc, char *argv[]) {
 		for (pendingN = 0;;) {
 			state = tls_process(conn);
 			if (state == TLS_STATE_CONNECTED) {
-				fprintf(fw, "success conn\n");
-				fflush(fw);
 				break;
 			} else if (state == TLS_STATE_PENDING) {
 				if (pendingN++ >= 2000000) {
 					Sleep(10000);
-					fprintf(fw, "pended out\n");
 					goto disconnect;
 				}
 			} else if (state < 0) {

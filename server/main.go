@@ -260,8 +260,8 @@ func tlsAccept(sv net.Listener) {
 		c := client{
 			addr:    conn.RemoteAddr().String(),
 			prot:    true,
-			plotX:   make([]float32, 500),
-			plotY:   make([]float32, 500),
+			plotX:   make([]float32, 1000),
+			plotY:   make([]float32, 1000),
 			conn:    conn,
 			send:    make(chan []byte, 16),
 			recvLog: make(chan []byte, 16),

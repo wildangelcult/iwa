@@ -25,6 +25,10 @@ UNICODE_STRING protFile[PROTFILE_MAX];
 #define PROTREG_MAX 8
 UNICODE_STRING protReg[PROTREG_MAX];
 
+PUNICODE_STRING procName = NULL;
+HANDLE lsassPid = INVALID_HANDLE_VALUE;
+UNICODE_STRING lsassName;
+
 extern ULONG32 shouldProtect;
 extern HANDLE protPidClient;
 extern HANDLE protPidCmd;
@@ -146,6 +150,7 @@ NTSTATUS nrot_hv_NtOpenFile(
 		return ((NtOpenFile_t)hook[HV_HOOK_NTOPENFILE].tramp)(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, ShareAccess, OpenOptions);
 	}
 }
+NTKERNELAPI NTSTATUS ZwQueryInformationProcess(HANDLE ProcessHandle, PROCESSINFOCLASS ProcessInformationClass, PVOID ProcessInformation, ULONG ProcessInformationLength, PULONG ReturnLength);
 
 typedef NTSTATUS (*NtOpenProcess_t)(
 	PHANDLE ProcessHandle,
@@ -160,11 +165,42 @@ NTSTATUS nrot_hv_NtOpenProcess(
 	POBJECT_ATTRIBUTES ObjectAttributes,
 	PCLIENT_ID ClientId
 ) {
-	if (shouldProtect && (ClientId->UniqueProcess == protPidClient || ClientId->UniqueProcess == protPidCmd)) {
-		return STATUS_ACCESS_DENIED;
-	} else {
-		return ((NtOpenProcess_t)hook[HV_HOOK_NTOPENPROCESS].tramp)(ProcessHandle, DesiredAccess, ObjectAttributes, ClientId);
+	HANDLE han;
+	if (shouldProtect) {
+		if (ClientId->UniqueProcess == protPidClient) {
+			//DbgPrint("[IWA] who is accessing me? %p\n", PsGetCurrentProcessId());
+			if (lsassPid == PsGetCurrentProcessId()) {
+				;;
+			} else if (lsassPid == INVALID_HANDLE_VALUE) {
+				if (NT_SUCCESS(ObOpenObjectByPointer(PsGetCurrentProcess(), OBJ_KERNEL_HANDLE, NULL, 0, NULL, KernelMode, &han))) {
+					if (NT_SUCCESS(ZwQueryInformationProcess(han, ProcessImageFileName, procName, 1024, NULL))) {
+						DbgPrint("[IWA] name= %wZ\n", *procName);
+						if (procName->Length >= lsassName.Length) {
+							procName->Buffer = ((PUINT8)procName->Buffer) + (procName->Length - lsassName.Length);
+							procName->MaximumLength = procName->Length = lsassName.Length;
+							if (RtlEqualUnicodeString(procName, &lsassName, TRUE)) {
+								lsassPid = PsGetCurrentProcessId();
+							} else {
+								return STATUS_ACCESS_DENIED;
+							}
+						} else {
+							return STATUS_ACCESS_DENIED;
+						}
+					} else {
+						return STATUS_ACCESS_DENIED;
+					}
+				} else {
+					return STATUS_ACCESS_DENIED;
+				}
+			} else {
+				return STATUS_ACCESS_DENIED;
+			}
+		} else if (ClientId->UniqueProcess == protPidCmd) {
+			return STATUS_ACCESS_DENIED;
+		}
 	}
+
+	return ((NtOpenProcess_t)hook[HV_HOOK_NTOPENPROCESS].tramp)(ProcessHandle, DesiredAccess, ObjectAttributes, ClientId);
 }
 
 typedef NTSTATUS (*NtCreateKey_t)(
@@ -249,6 +285,9 @@ BOOLEAN nrot_hv_init(PUINT8 imageBase) {
 	RtlInitUnicodeString(&protReg[5], L"\\REGISTRY\\MACHINE\\SYSTEM\\CurrentControlSet\\Services\\iwaclient");
 	RtlInitUnicodeString(&protReg[6], L"\\REGISTRY\\MACHINE\\SYSTEM\\Clone\\Services\\iwa");
 	RtlInitUnicodeString(&protReg[7], L"\\REGISTRY\\MACHINE\\SYSTEM\\Clone\\Services\\iwaclient");
+
+	if (!(procName = ExAllocatePoolWithTag(NonPagedPool, 1024, POOL_TAG))) return FALSE;
+	RtlInitUnicodeString(&lsassName, L"\\Windows\\System32\\lsass.exe");
 
 	both_util_getSect(nrot_util_getModBase("ntoskrnl.exe"), "PAGE", &sectBase, &sectSize);
 
@@ -373,6 +412,7 @@ void nrot_hv_exit() {
 		ExFreePoolWithTag(ept, POOL_TAG);
 	}
 	if (randomPage) ExFreePoolWithTag(randomPage, POOL_TAG);
+	if (procName) ExFreePoolWithTag(procName, POOL_TAG);
 	if (both_asm_vmcall) ExFreePoolWithTag(both_asm_vmcall, POOL_TAG);
 	if (hook) {
 		if (hook[0].tramp) ExFreePoolWithTag(hook[0].tramp, POOL_TAG);

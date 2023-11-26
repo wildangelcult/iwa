@@ -29,6 +29,10 @@ typedef enum hv_hookType_e {
 #include "idt.h"
 #include "asm.h"
 
+#ifndef INVALID_HANDLE_VALUE
+#define INVALID_HANDLE_VALUE ((HANDLE)(-1))
+#endif
+
 //#define __vmx_vmwrite(x,y) DbgPrint("[IWA] vmwrite %016X %p\n", (x), (y)); __vmx_vmwrite((x), (y));
 
 BOOLEAN nrot_hv_init(PUINT8 imageBase);
